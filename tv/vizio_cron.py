@@ -18,7 +18,7 @@ except getopt.GetoptError as err:
 
 tvs = {
     "master":{
-        "ip":"10.22.14.187",
+        "ip":"10.22.14.134",
         "auth":"Zdmx9r0pcx",
         "input":"HDMI-3"
     },
