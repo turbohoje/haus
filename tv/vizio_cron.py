@@ -29,11 +29,10 @@ tvs = {
     }
 }
 
-key = "kitchen"
 a = pyvizio.Vizio("pyvizio", tvs[key]['ip'], key, tvs[key]['auth'])
 
 if a.get_power_state() == False:
-    print("tv is off, powering on and setting input")
+    print(key + " tv is off, powering on and setting input")
     a.pow_on()
     time.sleep(3)
     a.set_input(tvs[key]['input'])
@@ -41,4 +40,4 @@ if a.get_power_state() == False:
     print("Shutting down")
     a.pow_off()
 else:
-    print("tv is on, skipping")
+    print(key + " tv is on, skipping")
