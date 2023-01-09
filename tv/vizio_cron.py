@@ -41,7 +41,7 @@ def brightness_inc(val):
     for inc in range(1, 102, 20):
         if inc > 100:
             inc = 100
-        print("testing setting bright to " + str(inc))
+        print("setting bright to " + str(inc))
         a.set_setting("picture", "backlight", int(inc))
         time.sleep(int(int(val)/5))
     print("brightness done")
