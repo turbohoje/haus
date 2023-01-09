@@ -32,12 +32,10 @@ tvs = {
 
 a = pyvizio.Vizio("pyvizio", tvs[key]['ip'], key, tvs[key]['auth'])
 # a.set_setting("picture", "backlight", 50)
-print(a.get_current_input())
-exit(1)
+
 def brightness_inc(val):
     #increase the brightness in 5 steps over val seconds
     #sleep to let the input select rest
-    time.sleep(3)
     for inc in range(1, 102, 20):
         if inc > 100:
             inc = 100
@@ -46,17 +44,23 @@ def brightness_inc(val):
         time.sleep(int(int(val)/5))
     print("brightness done")
 
-if a.get_power_state() == True:
+if a.get_power_state() == False:
     print(key + " tv is off, powering on and setting input")
-    a.pow_on()
+    
+    print("setting input")
+    a.set_input(tvs[key]['input'])
+    
     time.sleep(3)
+    
     if tvs[key].get('backlight') is not None:
         print("backlight!!")
-        x = threading.Thread(target=brightness_inc(tvs[key]['backlight']), args=(1,))
+        x = threading.Thread(target=brightness_inc, args=((tvs[key]['backlight'],)))
         x.start()
-    a.set_input(tvs[key]['input'])
+    
+    time.sleep(3) 
+    a.pow_on()
     time.sleep(secdelay)
-
+    
     #only shutdown if the input hasnt been changed.
     if a.get_current_input() == tvs[key]['input']:
         print("Shutting down")
