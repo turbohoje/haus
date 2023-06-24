@@ -25,7 +25,9 @@ args="[0:v][1:v]hstack=inputs=2[top];[2:v][3:v]hstack=inputs=2[bottom];[top][bot
 
 /h264Preview_01_sub
 
-testargs="[0:v]scale=1920:1080[bg];[bg][1:v]overlay"
+#testargs="[0:v]scale=1920:1080[bg];[bg][1:v]overlay"
+
+testargs="[0:v]scale=1920:1080[bg];[1:v][2:v][3:v]vstack=inputs=3[stk];[bg][stk]overlay"
 
 #ffmpeg -err_detect aggressive -fflags discardcorrupt  \
 #-i "rtsp://$un:$pass@$ip:554/h264Preview_01_sub" \
@@ -35,6 +37,8 @@ testargs="[0:v]scale=1920:1080[bg];[bg][1:v]overlay"
 ffmpeg -err_detect aggressive -fflags discardcorrupt  \
 -i "rtsp://$un:$pass@$ip:554/h264Preview_04_sub" \
 -i "rtsp://$un:$pass@$ip:554/h264Preview_01_sub" \
+-i "rtsp://$un:$pass@$ip:554/h264Preview_05_sub" \
+-i "rtsp://$un:$pass@$ip:554/h264Preview_03_sub" \
 -filter_complex $testargs \
 -pix_fmt bgra -f fbdev /dev/fb0
 
