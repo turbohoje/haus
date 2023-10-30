@@ -4,7 +4,6 @@ docker run -d \
   --name=unifi-controller \
   -e PUID=1000 \
   -e PGID=1000 \
-  -e JMEM_LIMIT=900M `#optional` \
   -p 3478:3478/udp \
   -p 10001:10001/udp \
   -p 8080:8080 \
