@@ -7,6 +7,7 @@ import os
 import sys
 import time
 
+#vera url
 URL = "http://10.22.14.4:3480"
 
 def device_info_callback(vera_device: pyvera.VeraDevice) -> None:

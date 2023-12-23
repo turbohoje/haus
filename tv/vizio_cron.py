@@ -2,6 +2,10 @@
 #pip3 install pyvizio
 
 import pyvizio, os, time, sys, getopt, threading
+
+#pull in tvs object
+from tvs_inc import tvs
+
 key = ""
 secdelay = 3600
 try:
@@ -16,19 +20,7 @@ except getopt.GetoptError as err:
     print(err)  # will print something like "option -a not recognized"
     sys.exit(2)
 
-tvs = {
-    "master":{
-        "ip":"10.22.14.134",
-        "auth":"Zdmx9r0pcx",
-        "input":"HDMI-3",
-        "backlight": (60*30)
-    },
-    "kitchen":{
-        "ip":"10.22.14.133",
-        "auth":"Z0xucmo0yo",
-        "input":"HDMI-3"
-    }
-}
+
 
 a = pyvizio.Vizio("pyvizio", tvs[key]['ip'], key, tvs[key]['auth'])
 # a.set_setting("picture", "backlight", 50)
@@ -59,6 +51,8 @@ if a.get_power_state() == False:
     
     time.sleep(3) 
     a.pow_on()
+    
+    a.set_input(tvs[key]['input'])
     time.sleep(secdelay)
     
     #only shutdown if the input hasnt been changed.
