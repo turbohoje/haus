@@ -13,6 +13,5 @@ tvs = {
     "ladyden":{
         "ip":"10.22.14.180",
         "auth":"Zs2ja2n627",
-        "input":"HDMI-1"
     }
 }

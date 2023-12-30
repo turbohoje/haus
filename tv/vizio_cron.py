@@ -39,8 +39,9 @@ def brightness_inc(val):
 if a.get_power_state() == False:
     print(key + " tv is off, powering on and setting input")
     
-    print("setting input")
-    a.set_input(tvs[key]['input'])
+    if tvs[key].get('input') is not None:
+        print("setting input")
+        a.set_input(tvs[key]['input'])
     
     time.sleep(3)
     
@@ -52,7 +53,8 @@ if a.get_power_state() == False:
     time.sleep(3) 
     a.pow_on()
     
-    a.set_input(tvs[key]['input'])
+    
+    #wait
     time.sleep(secdelay)
     
     #only shutdown if the input hasnt been changed.
