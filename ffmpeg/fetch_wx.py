@@ -25,15 +25,45 @@ def ftoc(f):
     c = (f - 32) * 5 / 9
     return "{:4.1f}".format(c)
 
+def ctof(c):
+    return "{:2.0f}".format((now_c * 9/5) + 32.0)
+
 url = 'https://www.wunderground.com/weather/us/co/denver'  # Replace with your desired URL
 xpath = ''  # Replace with the XPath of the element you want to find
 
+oat_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=112&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
+
+r = requests.get(oat_now_c)
+now_c = float(r.text)
+now_f = ctof(now_c)
+now_cs = "{:4.1f}".format(now_c)
+
 
 content = fetch_html(url)
-
+today_txt  = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[1]/div/a/div/div[2]/span[1]')
 today_f    = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[1]/div/a/div/div[2]/span[3]/span/lib-display-unit/span/span[1]')
-tonight_f  = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[2]/div/a/div/div[2]/span[3]/span/lib-display-unit/span/span[1]')
-tomorrow_f = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[3]/div/a/div/div[2]/span[3]/span[1]/lib-display-unit/span/span[1]')
+
+tonight_txt  = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[2]/div/a/div/div[2]/span[1]')
+tonight_f    = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[2]/div/a/div/div[2]/span[3]/span/lib-display-unit/span/span[1]')
+
+tomorrow_txt  = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[3]/div/a/div/div[2]/span[1]')
+tomorrow_f    = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[3]/div/a/div/div[2]/span[3]/span[1]/lib-display-unit/span/span[1]')
+
+
+# today_txt    =    today_txt.replace(' night', ' nt')
+# tonight_txt  =  tonight_txt.replace(' night', ' nt')
+# tomorrow_txt = tomorrow_txt.replace(' night', ' nt')
+
+today_txt    =    today_txt.replace('Tomorrow night', 'Tom.night')
+tonight_txt  =  tonight_txt.replace('Tomorrow night', 'Tom.night')
+tomorrow_txt = tomorrow_txt.replace('Tomorrow night', 'Tom.night')
+
+
+width = max(len(today_txt), len(tonight_txt), len(tomorrow_txt))
+now_txt      = "{:<{}}".format("Now", width)
+today_txt    = "{:<{}}".format(today_txt, width)
+tonight_txt  = "{:<{}}".format(tonight_txt, width)
+tomorrow_txt = "{:<{}}".format(tomorrow_txt, width)
 
 
 today_precip    = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[1]/div/div/div/a[1]')
@@ -58,6 +88,7 @@ tom_p = m.group(1)
 # print(f"today {today_f} tonight_f {tonight_f} tomorrow {tomorrow_f}")
 # print(f"today preicp {today_precip} tonight_precip {tonight_precip} tomorrow precip {tomorrow_precip}")
 
-print(f"Today:   {tod_c}°C {today_f}°F {tod_p}%")
-print(f"Tonight: {ton_c}°C {tonight_f}°F {ton_p}%")
-print(f"Tomorrow:{tom_c}°C {tomorrow_f}°F {tom_p}%")
+print(f"{now_txt}:{now_cs}°C {now_f}°F")
+print(f"{today_txt}:{tod_c}°C {today_f}°F {tod_p}%")
+print(f"{tonight_txt}:{ton_c}°C {tonight_f}°F {ton_p}%")
+print(f"{tomorrow_txt}:{tom_c}°C {tomorrow_f}°F {tom_p}%")

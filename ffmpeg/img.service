@@ -1,0 +1,13 @@
+[Install]
+WantedBy=multi-user.target
+
+[Unit]
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/home/turbohoje/haus/ffmpeg/
+EnvironmentFile=/etc/systemd/system/ffmpeg.env
+ExecStart=/home/turbohoje/haus/ffmpeg/img.sh
+Restart=on-failure
+RestartSec=3600s
