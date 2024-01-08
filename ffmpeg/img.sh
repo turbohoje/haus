@@ -1,6 +1,7 @@
 #!/bin/bash
 
 wd=/home/turbohoje/haus/ffmpeg
+cd $wd
 #clear screen
 dd if=/dev/zero count=10000 bs=1024 > /dev/fb0
 
@@ -26,7 +27,7 @@ while [ 1 ]; do
     curl -k -s "https://${nvr}/cgi-bin/api.cgi?cmd=Snap&channel=2&user=${un}&password=${pass}" -o $wd/imgproc/2.jpg & 
     curl -k -s "https://10.22.14.49/cgi-bin/api.cgi?cmd=Snap&channel=0&user=${un}&password=${pass}" -o $wd/imgproc/3.jpg & 
     curl -k -s "https://10.22.14.48/cgi-bin/api.cgi?cmd=Snap&channel=0&user=${un}&password=${pass}" -o $wd/imgproc/4.jpg &
-    if (( min == 0 )) && (( sec < 5 )); then
+    if [[ $((min % 15)) -eq 0 ]] && [[ $sec -lt 5 ]]; then
         echo "GETTING HOURLY WX DATA"
         ./fetch_wx.py > $wd/wx.txt
     fi
@@ -52,7 +53,7 @@ while [ 1 ]; do
     -i "$wd/imgproc/1.jpg" \
     -filter_complex $testargs \
     -vframes 1 \
-    -pix_fmt bgra -f fbdev /dev/fb0
+    -pix_fmt bgra -f fbdev /dev/fb0 > /dev/null
     
     echo "done"
 done
