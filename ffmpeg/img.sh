@@ -4,7 +4,7 @@ wd=/home/turbohoje/haus/ffmpeg
 cd $wd
 #clear screen
 dd if=/dev/zero count=10000 bs=1024 > /dev/fb0
-
+set -x
 #un=ENV
 #pass=ENV
 nvr=10.22.14.9
@@ -22,7 +22,7 @@ while [ 1 ]; do
     stdlog "Starting image capture"
     min=$(date +"%M")
     sec=$(date +"%S")
-    curl -k -s "https://10.22.14.51/cgi-bin/api.cgi?cmd=Snap&channel=0&user=${un}&password=${pass}" -o $wd/imgproc/0.jpg || true &
+    curl -k -s "https://10.22.14.58/cgi-bin/api.cgi?cmd=Snap&channel=0&user=${un}&password=${pass}" -o $wd/imgproc/0.jpg || true &
     curl -k -s "https://${nvr}/cgi-bin/api.cgi?cmd=Snap&channel=1&user=${un}&password=${pass}" -o $wd/imgproc/1.jpg || true &
     curl -k -s "https://${nvr}/cgi-bin/api.cgi?cmd=Snap&channel=2&user=${un}&password=${pass}" -o $wd/imgproc/2.jpg || true & 
     curl -k -s "https://10.22.14.49/cgi-bin/api.cgi?cmd=Snap&channel=0&user=${un}&password=${pass}" -o $wd/imgproc/3.jpg || true & 
@@ -35,7 +35,7 @@ while [ 1 ]; do
         fi
     fi
     
-    date=$(date +"%a %b %d %H:%M:%S")
+    date=$(date +"%a %b%d  %H:%M:%S")
     echo "$date" > $wd/screen.txt
     
     for job in `jobs -p`; do wait ${job}; done
