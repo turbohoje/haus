@@ -11,3 +11,6 @@ EnvironmentFile=/etc/systemd/system/ffmpeg.env
 ExecStart=/home/turbohoje/haus/ffmpeg/img.sh
 Restart=on-failure
 RestartSec=3600s
+
+[Journal]
+SystemMaxUse=10M
