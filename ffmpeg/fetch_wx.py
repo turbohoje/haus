@@ -15,6 +15,13 @@ def fetch_html(url):
         sys.exit(1)
         return None
 
+def print_elements(element, indent=0):
+    print("  " * indent + f"Tag: {element.tag}, Text: {element.text.strip() if element.text else 'None'}")
+    
+    # Iterate over child elements and recursively print them
+    for child in element:
+        print_elements(child, indent + 1)
+
 def xpath_value(content, xpath):
     element = content.xpath(xpath)
     return str(element[0].text_content()) if element else None
@@ -29,6 +36,7 @@ def ctof(c):
     return "{:2.0f}".format((now_c * 9/5) + 32.0)
 
 url = 'https://www.wunderground.com/weather/us/co/denver'  # Replace with your desired URL
+aqi_url = 'https://www.wunderground.com/health/us/co/denver?cm_ven=localwx_modaq'
 xpath = ''  # Replace with the XPath of the element you want to find
 
 oat_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=112&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
@@ -40,6 +48,8 @@ now_cs = "{:4.1f}".format(now_c)
 
 
 content = fetch_html(url)
+aqi_content = fetch_html(aqi_url)
+
 today_txt  = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[1]/div/a/div/div[2]/span[1]')
 today_f    = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[1]/div/a/div/div[2]/span[3]/span/lib-display-unit/span/span[1]')
 
@@ -85,6 +95,10 @@ ton_p = m.group(1)
 m = re.search(r'^(\d+)%', tomorrow_precip)
 tom_p = m.group(1)
 
+# pollen      = svg_value(content,'/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[4]/div[2]/lib-pollen-tile/a/div[3]')
+# pollen_type = svg_value(content,'/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[4]/div[2]/lib-pollen-tile/a/div[3]/svg/text[1]')
+aqi         = xpath_value(aqi_content,'/html/body/app-root/app-health/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div[1]/div[1]/div/health-air-quality-index/div/div/div[1]/div/div/div/div[2]/div[2]/div[1]/div[2]')
+aqi_text    = xpath_value(aqi_content,'/html/body/app-root/app-health/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div[1]/div[1]/div/health-air-quality-index/div/div/div[1]/div/div/div/div[1]/div[2]/div[2]')
 # print(f"today {today_f} tonight_f {tonight_f} tomorrow {tomorrow_f}")
 # print(f"today preicp {today_precip} tonight_precip {tonight_precip} tomorrow precip {tomorrow_precip}")
 
@@ -92,3 +106,5 @@ print(f"{now_txt}:{now_cs}°C {now_f}°F")
 print(f"{today_txt}:{tod_c}°C {today_f}°F {tod_p}%")
 print(f"{tonight_txt}:{ton_c}°C {tonight_f}°F {ton_p}%")
 print(f"{tomorrow_txt}:{tom_c}°C {tomorrow_f}°F {tom_p}%")
+
+print("AQI: " + str(aqi_text) + "/" + str(aqi))
