@@ -1,4 +1,6 @@
 #https://hub.docker.com/r/linuxserver/unifi-controller
+#upgrade to https://github.com/linuxserver/docker-unifi-network-application?tab=readme-ov-file
+#needs mongo et al
 
 docker run -d \
   --name=unifi-controller \
