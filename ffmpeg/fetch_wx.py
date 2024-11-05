@@ -48,14 +48,20 @@ now_c = float(r.text)
 now_f = ctof(now_c)
 now_cs = "{:4.1f}".format(now_c)
 
-r = requests.get(basemnt_now_c)
-now_c = float(r.text)
-basement_now_txt = "{:4.1f}".format(now_c)
+try:
+    r = requests.get(basemnt_now_c)
+    now_c = float(r.text)
+    basement_now_txt = "{:4.1f}".format(now_c)
+except:
+  basement_now_txt = "-nf-"
 
-r = requests.get(ladyden_now_c)
-now_c = float(r.text)
-ladyden_now_txt = "{:4.1f}".format(now_c)
 
+try:
+    r = requests.get(ladyden_now_c)
+    now_c = float(r.text)
+    ladyden_now_txt = "{:4.1f}".format(now_c)
+except:
+    ladyden_now_txt = "-nf-"
 
 content = fetch_html(url)
 aqi_content = fetch_html(aqi_url)
