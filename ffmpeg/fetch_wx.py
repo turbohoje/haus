@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
-import requests, sys, re
+import requests, sys, re, pickle, os
+from datetime import date
 from lxml import html
+from playwright.sync_api import sync_playwright
 
 def fetch_html(url):
     try:
@@ -41,7 +43,7 @@ xpath = ''  # Replace with the XPath of the element you want to find
 
 oat_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=112&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
 basemnt_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=207&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
-ladyden_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=154&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
+ladyden_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=216&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
 
 r = requests.get(oat_now_c)
 now_c = float(r.text)
@@ -74,6 +76,8 @@ tonight_f    = xpath_value(content, '/html/body/app-root/app-today/one-column-la
 
 tomorrow_txt  = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[3]/div/a/div/div[2]/span[1]')
 tomorrow_f    = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[3]/div/a/div/div[2]/span[3]/span[1]/lib-display-unit/span/span[1]')
+
+
 
 
 # today_txt    =    today_txt.replace(' night', ' nt')
@@ -134,3 +138,20 @@ print(f"{tonight_txt}:{ton_c}°C {tonight_f}°F {ton_p}%")
 print(f"{tomorrow_txt}:{tom_c}°C {tomorrow_f}°F {tom_p}%")
 
 print("AQ:" + str(aqi_text) + "/" + str(aqi) + " L:"+ladyden_now_txt+" B:"+basement_now_txt)
+
+current_file_directory = os.path.dirname(os.path.abspath(__file__))
+with open(current_file_directory+'/forecast.pkl', 'rb') as file:
+    forecast = pickle.load(file)
+
+today = date.today()
+diff = today - forecast['last']
+if(diff.days > 1):
+    print("fetch error")
+else:
+    print("hi:", end="")
+    for i in forecast['values']:
+        print(i[0], end=" ")
+    print()
+    print("lo:", end="")
+    for i in forecast['values']:
+        print(i[1], end=" ")
