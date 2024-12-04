@@ -62,6 +62,6 @@ if a.get_power_state() == False:
         print("Shutting down")
         a.pow_off()
     else:
-        print("input changed, assume someone is watching the tv")
+        print("input changed, assume someone is watching the tv" + str(a.get_current_input()))
 else:
     print(key + " tv is on, skipping")

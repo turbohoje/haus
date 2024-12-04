@@ -11,7 +11,8 @@ tvs = {
         "input":"HDMI-3"
     },
     "ladyden":{
-        "ip":"10.22.14.180",
-        "auth":"Zs2ja2n627",
+        "ip":"10.22.14.87",
+        "auth":"Zisoiak1b8",
+        "input":"hdmi2"
     }
 }
