@@ -5,6 +5,8 @@ from datetime import date
 from lxml import html
 from playwright.sync_api import sync_playwright
 
+current_file_directory = os.path.dirname(os.path.abspath(__file__))
+
 def fetch_html(url):
     try:
         response = requests.get(url)
@@ -132,14 +134,17 @@ aqi_text    = abbreviate_string(str(xpath_value(aqi_content,'/html/body/app-root
 # print(f"today {today_f} tonight_f {tonight_f} tomorrow {tomorrow_f}")
 # print(f"today preicp {today_precip} tonight_precip {tonight_precip} tomorrow precip {tomorrow_precip}")
 
-print(f"{now_txt}:{now_cs}°C {now_f}°F")
+#print(f"{now_txt}:{now_cs}°C {now_f}°F")
 print(f"{today_txt}:{tod_c}°C {today_f}°F {tod_p}%")
 print(f"{tonight_txt}:{ton_c}°C {tonight_f}°F {ton_p}%")
 print(f"{tomorrow_txt}:{tom_c}°C {tomorrow_f}°F {tom_p}%")
 
-print("AQ:" + str(aqi_text) + "/" + str(aqi) + " L:"+ladyden_now_txt+" B:"+basement_now_txt)
+#print("AQ:" + str(aqi_text) + "/" + str(aqi) + " L:"+ladyden_now_txt+" B:"+basement_now_txt)
+with open(current_file_directory+'/center_wx.txt', 'w') as file:
+    print(f"{now_txt}:{now_cs}°C {now_f}°F", file=file)
+    print("AQ:" + str(aqi_text) + "/" + str(aqi) + " L:"+ladyden_now_txt+" B:"+basement_now_txt, file=file)
 
-current_file_directory = os.path.dirname(os.path.abspath(__file__))
+
 with open(current_file_directory+'/forecast.pkl', 'rb') as file:
     forecast = pickle.load(file)
 

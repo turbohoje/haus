@@ -36,13 +36,14 @@ while [ 1 ]; do
     fi
     
     date=$(date +"%a %b%d  %H:%M:%S")
-    echo "$date" > $wd/screen.txt
+    echo "$date" > $wd/center.txt
+    cat $wd/center_wx.txt >> $wd/center.txt
     
     for job in `jobs -p`; do wait ${job}; done
     small_dims="scale=640:360"
     
     testargs="[0:v]crop=2520:1380:1326:365,scale=1920:1080[bg];[1:v]$small_dims[1];[2:v]$small_dims[2];[3:v]$small_dims[3];[1][2][3]vstack=inputs=3[stk];[bg][stk]overlay"
-    testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/OpenSansEmoji.ttf:textfile=$wd/screen.txt:fontcolor=white:fontsize=64:box=1:boxcolor=black@0.4:boxborderw=10:x=(w-tw)/2:y=0:line_spacing=20:expansion=none'"
+    testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/center.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=(w-tw)/2:y=0:line_spacing=20:expansion=none'"
     testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/wx.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw:y=0:line_spacing=20:expansion=none'"
 
     stdlog "Starting ffmpeg framebuffer"
