@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#cron this up to run on the minute
 
 import requests
 import pytz
@@ -38,7 +39,7 @@ def lady_den():
             print("powering on")
             a.pow_on()
             time.sleep(3) 
-            
+
             if tvs['ladyden'].get('input') is not None:
                 print("setting input")
                 a.set_input(tvs['ladyden']['input'])
