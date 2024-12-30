@@ -17,7 +17,9 @@ tvs = {
         "motion":"http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=215&serviceId=urn:micasaverde-com:serviceId:SecuritySensor1&Variable=LastTrip"
     },
     "office":{
-        "ip":"",
+        "ip":"10.22.14.104",
+        "psk":"2214",
+        "input": "HDMI 3",
         "motion":"http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=198&serviceId=urn:micasaverde-com:serviceId:SecuritySensor1&Variable=LastTrip"
     }
 }
