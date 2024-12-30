@@ -151,7 +151,7 @@ def basement_office():
     print(f"Current time in Denver (epoch): {now_epoch}")
     print(f"Difference in seconds: {diff_in_seconds}")
 
-    state_desired = diff_in_seconds < (3600)
+    state_desired = diff_in_seconds < (3600/4)
     state_current = get_power_state()
 
     print("TV should be " + str(state_desired))
