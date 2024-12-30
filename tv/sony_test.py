@@ -81,13 +81,43 @@ def select_input(input_name):
     else:
         print("Failed to change input.")
 
+
+def switch_to_hdmi(port):
+    HDMI_INPUTS = {
+        "HDMI1": "extInput:hdmi?port=1",
+        "HDMI2": "extInput:hdmi?port=2",
+        "HDMI3": "extInput:hdmi?port=3",
+        "HDMI4": "extInput:hdmi?port=4",
+    }
+    if port not in HDMI_INPUTS:
+        print(f"Invalid port: {port}. Available ports: {list(HDMI_INPUTS.keys())}")
+        return
+
+    # Payload to set the HDMI input
+    payload = {
+        "method": "setPlayContent",
+        "params": [{"uri": HDMI_INPUTS[port]}],
+        "id": 1,
+        "version": "1.0",
+    }
+
+    # Send the request
+    response = requests.post(INPUT_URL, headers=HEADERS, json=payload)
+
+    if response.status_code == 200:
+        print(f"Switched to {port}")
+    else:
+        print(f"Failed to switch to {port}. Status code: {response.status_code}, Response: {response.text}")
+
+
 # Example usage
 if __name__ == "__main__":
     # Power on the TV
-    power_on()
+    #power_on()
 
     # Switch to a known input, e.g., "HDMI 1"
-    select_input("HDMI 3")
+    #select_input("hdmi 3")
+    switch_to_hdmi("HDMI3")
 
     # Power off the TV
     #power_off()

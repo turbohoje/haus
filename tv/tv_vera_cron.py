@@ -80,22 +80,33 @@ def basement_office():
         else:
             print("Failed to power off the TV.")
 
-    def select_input(input_name):
-        """
-        Select a known input.
-        input_name: str, e.g., "HDMI 1", "HDMI 2", etc.
-        """
-        params = {
-            "method": "setPlayContent",
-            "params": [{"uri": f"tv:/{input_name}"}],
-            "id": 1,
-            "version": "1.0"
+    def switch_to_hdmi(port):
+        HDMI_INPUTS = {
+            "HDMI 1": "extInput:hdmi?port=1",
+            "HDMI 2": "extInput:hdmi?port=2",
+            "HDMI 3": "extInput:hdmi?port=3",
+            "HDMI 4": "extInput:hdmi?port=4",
         }
-        response = send_command(INPUT_URL, params)
-        if response:
-            print(f"Switched to input: {input_name}")
+        if port not in HDMI_INPUTS:
+            print(f"Invalid port: {port}. Available ports: {list(HDMI_INPUTS.keys())}")
+            return
+
+        # Payload to set the HDMI input
+        payload = {
+            "method": "setPlayContent",
+            "params": [{"uri": HDMI_INPUTS[port]}],
+            "id": 1,
+            "version": "1.0",
+        }
+
+        # Send the request
+        response = requests.post(INPUT_URL, headers=HEADERS, json=payload)
+
+        if response.status_code == 200:
+            print(f"Switched to {port}")
         else:
-            print("Failed to change input.")
+            print(f"Failed to switch to {port}. Status code: {response.status_code}, Response: {response.text}") 
+
     def get_current_input():
         """
         Get the currently selected input on the Sony TV.
@@ -153,7 +164,7 @@ def basement_office():
 
             if tvs['office'].get('input') is not None:
                 print("setting input")
-                select_input(tvs['office']['input'])
+                switch_to_hdmi(tvs['office']['input'])
                 
         else: #turn off
             if get_current_input() == tvs['office']['input']:
