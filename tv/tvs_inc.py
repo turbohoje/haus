@@ -12,7 +12,7 @@ tvs = {
     },
     "ladyden":{
         "ip":"10.22.14.87",
-        "auth":"Zisoiak1b8",
+        "auth":"Z3ung2wbir",
         "input":"hdmi2",
         "motion":"http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=215&serviceId=urn:micasaverde-com:serviceId:SecuritySensor1&Variable=LastTrip"
     },

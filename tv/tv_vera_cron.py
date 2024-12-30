@@ -10,6 +10,7 @@ import pyvizio, time
 import json
 
 def basement_office():
+    print("basement office wega")
     TV_IP = tvs['office']['ip']  
     PRE_SHARED_KEY = tvs['office']['psk']
 
@@ -176,6 +177,7 @@ def basement_office():
 
 
 def lady_den():
+    print("lady den")
     url = tvs['ladyden']['motion']
     print(url)
     response = requests.get(url)
@@ -222,5 +224,5 @@ def lady_den():
 
 if __name__ == "__main__":
     basement_office()
-    #lady_den()
+    lady_den()
     
