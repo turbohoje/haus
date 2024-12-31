@@ -44,8 +44,8 @@ aqi_url = 'https://www.wunderground.com/health/us/co/denver?cm_ven=localwx_modaq
 xpath = ''  # Replace with the XPath of the element you want to find
 
 oat_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=112&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
-basemnt_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=228&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
-ladyden_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=232&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
+basemnt_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=240&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
+ladyden_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=236&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
 
 r = requests.get(oat_now_c)
 now_c = float(r.text)
