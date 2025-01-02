@@ -10,7 +10,7 @@ import pyvizio, time
 import json
 
 def basement_office():
-    print("basement office wega")
+    print("\nbasement office wega")
     TV_IP = tvs['office']['ip']  
     PRE_SHARED_KEY = tvs['office']['psk']
 
@@ -138,9 +138,12 @@ def basement_office():
     print(url)
     response = requests.get(url)
     response.raise_for_status()  # Will raise an exception for 4XX/5XX status codes
-    
     last_trip_epoch = int(response.text.strip())  # Assuming the response body is just the epoch time
-    
+
+    tripped_response = requests.get(tvs['office']['tripped'])
+    tripped_response.raise_for_status()  # Will raise an exception for 4XX/5XX status codes
+    tripped_state = int(tripped_response.text.strip())  # Assuming the response body is just the epoch time
+
     mountain_tz = pytz.timezone("America/Denver")
     now_mountain = datetime.now(mountain_tz)
     
@@ -150,8 +153,12 @@ def basement_office():
     print(f"Last trip epoch: {last_trip_epoch}")
     print(f"Current time in Denver (epoch): {now_epoch}")
     print(f"Difference in seconds: {diff_in_seconds}")
+    print(f"Tripped state: {tripped_state}")
 
-    state_desired = diff_in_seconds < (3600/4)
+    if tripped_state == 1: 
+        state_desired = True
+    else:
+        state_desired = diff_in_seconds < (3600/4)
     state_current = get_power_state()
 
     print("TV should be " + str(state_desired))
@@ -177,7 +184,7 @@ def basement_office():
 
 
 def lady_den():
-    print("lady den")
+    print("\nlady den")
     url = tvs['ladyden']['motion']
     print(url)
     response = requests.get(url)
@@ -190,14 +197,22 @@ def lady_den():
     
     now_epoch = int(now_mountain.timestamp())
     diff_in_seconds = now_epoch - last_trip_epoch
+
+    tripped_response = requests.get(tvs['ladyden']['tripped'])
+    tripped_response.raise_for_status()  # Will raise an exception for 4XX/5XX status codes
+    tripped_state = int(tripped_response.text.strip())  # Assuming the response body is just the epoch time
     
     print(f"Last trip epoch: {last_trip_epoch}")
     print(f"Current time in Denver (epoch): {now_epoch}")
     print(f"Difference in seconds: {diff_in_seconds}")
+    print(f"Tripped state: {tripped_state}")
 
     a = pyvizio.Vizio("pyvizio", tvs['ladyden']['ip'], 'ladyden', tvs['ladyden']['auth'])
     
-    state_desired = diff_in_seconds < (3600/4)
+    if tripped_state == 1: 
+        state_desired = True
+    else:
+        state_desired = diff_in_seconds < (3600/4)
     state_current = a.get_power_state()
 
     print("TV should be " + str(state_desired))
