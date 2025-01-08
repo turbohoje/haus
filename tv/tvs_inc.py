@@ -16,6 +16,8 @@ tvs = {
         "input":"hdmi2",
         "motion":"http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=215&serviceId=urn:micasaverde-com:serviceId:SecuritySensor1&Variable=LastTrip",
         "tripped":"http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=215&serviceId=urn:micasaverde-com:serviceId:SecuritySensor1&Variable=Tripped",
+        "floor_status":"http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=192&serviceId=urn:upnp-org:serviceId:SwitchPower1&Variable=Status",
+        "floor_set":"http://10.22.14.4:3480/data_request?id=action&DeviceNum=192&serviceId=urn:upnp-org:serviceId:SwitchPower1&action=SetTarget&newTargetValue="
     },
     "office":{
         "ip":"10.22.14.104",

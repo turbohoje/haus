@@ -236,8 +236,55 @@ def lady_den():
         print("input: " + str(a.get_current_input()))
         print("no change needed")
 
+def lady_den_floor():
+    print("\nlady den floor")
+    url = tvs['ladyden']['motion']
+    print(url)
+    response = requests.get(url)
+    response.raise_for_status()  # Will raise an exception for 4XX/5XX status codes
+    
+    last_trip_epoch = int(response.text.strip())  # Assuming the response body is just the epoch time
+    
+    mountain_tz = pytz.timezone("America/Denver")
+    now_mountain = datetime.now(mountain_tz)
+    
+    now_epoch = int(now_mountain.timestamp())
+    diff_in_seconds = now_epoch - last_trip_epoch
+
+    tripped_response = requests.get(tvs['ladyden']['tripped'])
+    tripped_response.raise_for_status()  # Will raise an exception for 4XX/5XX status codes
+    tripped_state = int(tripped_response.text.strip())  # Assuming the response body is just the epoch time
+    
+    print(f"Last trip epoch: {last_trip_epoch}")
+    print(f"Current time in Denver (epoch): {now_epoch}")
+    print(f"Difference in seconds: {diff_in_seconds}")
+    print(f"Tripped state: {tripped_state}")
+
+    req = requests.get(tvs['ladyden']['floor_status'])
+    state_current = True if str(req.text) == "1" else False
+    
+    if tripped_state == 1: 
+        state_desired = True
+    else:
+        state_desired = diff_in_seconds < (3600/4)
+
+
+    print("Floor should be " + str(state_desired))
+    print("Floor is " + str(state_current))
+
+    if state_desired != state_current:        
+        if state_desired: #turn on
+            print("powering on water pump")
+            requests.get(tvs['ladyden']['floor_set']+"1")
+            time.sleep(5) 
+                
+        else: #turn off
+            requests.get(tvs['ladyden']['floor_set']+"0")
+    else:
+        print("no change needed")
 
 if __name__ == "__main__":
     basement_office()
     lady_den()
+    lady_den_floor()
     
