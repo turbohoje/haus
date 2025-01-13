@@ -8,6 +8,7 @@ from datetime import datetime
 from tvs_inc import tvs
 import pyvizio, time
 import json
+from datetime import datetime
 
 def basement_office():
     print("\nbasement office wega")
@@ -263,7 +264,17 @@ def lady_den_floor():
     req = requests.get(tvs['ladyden']['floor_status'])
     state_current = True if str(req.text) == "1" else False
     
-    if tripped_state == 1: 
+    #turn on 4-7 am every weekday
+    current_time = datetime.now()
+    current_hour = current_time.hour
+    current_weekday = current_time.weekday()
+
+    if current_weekday < 5 and 4 <= current_hour < 7:
+        pre_warm = True
+    else:
+        pre_warm = False
+
+    if tripped_state == 1 or pre_warm: 
         state_desired = True
     else:
         state_desired = diff_in_seconds < (3600/4)
