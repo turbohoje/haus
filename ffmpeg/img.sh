@@ -1,5 +1,8 @@
 #!/bin/bash
 #DEBUG=true
+
+#note this is a ramdrive of fixed size, fstab
+#tmpfs		/home/turbohoje/haus/ffmpeg/imgproc tmpfs  defaults,size=15M  0  0
 wd=/home/turbohoje/haus/ffmpeg
 cd $wd
 #clear screen
