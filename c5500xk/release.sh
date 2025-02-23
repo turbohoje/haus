@@ -82,7 +82,7 @@ curl 'https://192.168.0.1/cgi/cgi_action' \
   --data-raw 'Action=Release' \
   --insecure
 
-sleep 3
+sleep 10
 #renew
   curl 'https://192.168.0.1/cgi/cgi_set' \
   -H 'Accept: */*' \
