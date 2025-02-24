@@ -21,11 +21,15 @@ with sync_playwright() as p:
     next=[0]*7
     for i in range(0, 7):
         divIdx = i+3;
-        a = page.locator('//html/body/app-root/app-tenday/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[1]/div/lib-forecast-chart/div/div/div/lib-forecast-chart-header-daily/div/div/div/div[2]/a['+str(divIdx)+']/div/span[1]/span[1]').all_inner_texts()[0]
-        b = page.locator('//html/body/app-root/app-tenday/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[1]/div/lib-forecast-chart/div/div/div/lib-forecast-chart-header-daily/div/div/div/div[2]/a['+str(divIdx)+']/div/span[1]/span[3]').all_inner_texts()[0]
+        a  = page.locator('//html/body/app-root/app-tenday/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[1]/div/lib-forecast-chart/div/div/div/lib-forecast-chart-header-daily/div/div/div/div[2]/a['+str(divIdx)+']/div/span[1]/span[1]').all_inner_texts()[0]
+        b  = page.locator('//html/body/app-root/app-tenday/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[1]/div/lib-forecast-chart/div/div/div/lib-forecast-chart-header-daily/div/div/div/div[2]/a['+str(divIdx)+']/div/span[1]/span[3]').all_inner_texts()[0]
+        dy = page.locator('//html/body/app-root/app-tenday/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[1]/div/lib-forecast-chart/div/div/div/lib-forecast-chart-header-daily/div/div/div/div[1]/a['+str(divIdx)+']/div/div').all_inner_texts()[0]
+        c, d = dy.split(' ')
         next[i]=[
             a[:-1],
-            b[:-1]
+            b[:-1],
+            c,
+            d
         ]
     print(next)
 

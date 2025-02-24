@@ -148,15 +148,23 @@ with open(current_file_directory+'/center_wx.txt', 'w') as file:
 with open(current_file_directory+'/forecast.pkl', 'rb') as file:
     forecast = pickle.load(file)
 
+
+DAY_MAP = {
+    "Mon": "M",
+    "Tue": "T",
+    "Wed": "W",
+    "Thu": "R",  
+    "Fri": "F",
+    "Sat": "S",
+    "Sun": "U" 
+}
+
 today = date.today()
 diff = today - forecast['last']
 if(diff.days > 1):
     print("fetch error")
 else:
-    print("hi:", end="")
+    print("  hi lo")
     for i in forecast['values']:
-        print(i[0], end=" ")
-    print()
-    print("lo:", end="")
-    for i in forecast['values']:
-        print(i[1], end=" ")
+        print(DAY_MAP[i[2]], i[0], i[1])
+    
