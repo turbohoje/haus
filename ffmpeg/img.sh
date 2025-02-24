@@ -51,6 +51,7 @@ while [ 1 ]; do
 
     stdlog "Starting ffmpeg framebuffer"
 
+    
     ffmpeg -err_detect aggressive -fflags discardcorrupt  \
     -i "$wd/imgproc/3.jpg" \
     -i "$wd/imgproc/0.jpg" \
