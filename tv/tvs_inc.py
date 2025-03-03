@@ -15,6 +15,8 @@ tvs = {
         "auth":"Z3ung2wbir",
         "input":"hdmi2",
         "motion":"http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=215&serviceId=urn:micasaverde-com:serviceId:SecuritySensor1&Variable=LastTrip",
+        "temp":"http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=236&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature",
+        "temp_max": 22.0,
         "tripped":"http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=215&serviceId=urn:micasaverde-com:serviceId:SecuritySensor1&Variable=Tripped",
         "floor_status":"http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=192&serviceId=urn:upnp-org:serviceId:SwitchPower1&Variable=Status",
         "floor_set":"http://10.22.14.4:3480/data_request?id=action&DeviceNum=192&serviceId=urn:upnp-org:serviceId:SwitchPower1&action=SetTarget&newTargetValue="

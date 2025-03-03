@@ -256,6 +256,10 @@ def lady_den_floor():
     tripped_response.raise_for_status()  # Will raise an exception for 4XX/5XX status codes
     tripped_state = int(tripped_response.text.strip())  # Assuming the response body is just the epoch time
     
+    response = requests.get(tvs['ladyden']['temp'])
+    response.raise_for_status()
+    current_temp = float(response.text.strip())
+
     print(f"Last trip epoch: {last_trip_epoch}")
     print(f"Current time in Denver (epoch): {now_epoch}")
     print(f"Difference in seconds: {diff_in_seconds}")
@@ -278,6 +282,12 @@ def lady_den_floor():
         state_desired = True
     else:
         state_desired = diff_in_seconds < (3600/4)
+
+    #max temp
+    print("current temp")
+    print(current_temp)
+    if current_temp > tvs['ladyden']['temp_max']:
+        state_desired = False
 
 
     print("Floor should be " + str(state_desired))
