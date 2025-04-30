@@ -134,10 +134,17 @@ aqi_text    = abbreviate_string(str(xpath_value(aqi_content,'/html/body/app-root
 # print(f"today {today_f} tonight_f {tonight_f} tomorrow {tomorrow_f}")
 # print(f"today preicp {today_precip} tonight_precip {tonight_precip} tomorrow precip {tomorrow_precip}")
 
+
+#open output file
+script_dir = os.path.dirname(os.path.abspath(__file__))
+wx_hour = open(os.path.join(script_dir, 'wx_forecast_hour.txt'), 'w')
+wx_week = open(os.path.join(script_dir, 'wx_forecast_week.txt'), 'w')
+
+
 #print(f"{now_txt}:{now_cs}°C {now_f}°F")
-print(f"{today_txt}:{tod_c}°C {today_f}°F {tod_p}%")
-print(f"{tonight_txt}:{ton_c}°C {tonight_f}°F {ton_p}%")
-print(f"{tomorrow_txt}:{tom_c}°C {tomorrow_f}°F {tom_p}%")
+print(f"{today_txt}:{tod_c}°C {today_f}°F {tod_p}%", file=wx_hour)
+print(f"{tonight_txt}:{ton_c}°C {tonight_f}°F {ton_p}%", file=wx_hour)
+print(f"{tomorrow_txt}:{tom_c}°C {tomorrow_f}°F {tom_p}%", file=wx_hour)
 
 #print("AQ:" + str(aqi_text) + "/" + str(aqi) + " L:"+ladyden_now_txt+" B:"+basement_now_txt)
 with open(current_file_directory+'/center_wx.txt', 'w') as file:
@@ -164,7 +171,9 @@ diff = today - forecast['last']
 if(diff.days > 1):
     print("fetch error")
 else:
-    print("  hi lo")
+    print("  hi lo", file=wx_week)
     for i in forecast['values']:
-        print(DAY_MAP[i[2]], i[0], i[1])
+        print(DAY_MAP[i[2]], i[0], i[1], file=wx_week)
     
+wx_hour.close()
+wx_week.close()

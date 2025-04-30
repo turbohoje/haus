@@ -307,5 +307,5 @@ def lady_den_floor():
 if __name__ == "__main__":
     basement_office()
     lady_den()
-    lady_den_floor()
+    #lady_den_floor()
     
