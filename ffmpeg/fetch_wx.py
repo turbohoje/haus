@@ -46,6 +46,8 @@ xpath = ''  # Replace with the XPath of the element you want to find
 oat_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=112&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
 basemnt_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=240&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
 ladyden_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=236&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
+master_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=169&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
+living_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=246&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
 
 r = requests.get(oat_now_c)
 now_c = float(r.text)
@@ -66,6 +68,22 @@ try:
     ladyden_now_txt = "{:4.1f}".format(now_c)
 except:
     ladyden_now_txt = "-nf-"
+
+
+try:
+    r = requests.get(master_now_c)
+    now_c = float(r.text)
+    master_now_txt = "{:4.1f}".format(now_c)
+except:
+    master_now_txt = "-nf-"
+
+try:
+    r = requests.get(living_now_c)
+    now_c = float(r.text)
+    living_now_txt = "{:4.1f}".format(now_c)
+except:
+    living_now_txt = "-nf-"
+
 
 content = fetch_html(url)
 aqi_content = fetch_html(aqi_url)
@@ -92,7 +110,7 @@ tomorrow_txt = tomorrow_txt.replace('Tomorrow night', 'Tom.night')
 
 
 width = max(len(today_txt), len(tonight_txt), len(tomorrow_txt))
-now_txt      = "{:<{}}".format("Now", width)
+#now_txt      = "{:<{}}".format("Now", width)
 today_txt    = "{:<{}}".format(today_txt, width)
 tonight_txt  = "{:<{}}".format(tonight_txt, width)
 tomorrow_txt = "{:<{}}".format(tomorrow_txt, width)
@@ -148,8 +166,10 @@ print(f"{tomorrow_txt}:{tom_c}°C {tomorrow_f}°F {tom_p}%", file=wx_hour)
 
 #print("AQ:" + str(aqi_text) + "/" + str(aqi) + " L:"+ladyden_now_txt+" B:"+basement_now_txt)
 with open(current_file_directory+'/center_wx.txt', 'w') as file:
-    print(f"{now_txt}:{now_cs}°C {now_f}°F", file=file)
-    print("AQ:" + str(aqi_text) + "/" + str(aqi) + " L:"+ladyden_now_txt+" B:"+basement_now_txt, file=file)
+    print(f"{now_cs}°C {now_f}°F", file=file)
+    print("AQ:" + str(aqi_text) + "/" + str(aqi), file=file ) #+ " L:"+ladyden_now_txt+" B:"+basement_now_txt, file=file)
+    print("Ld:"+ladyden_now_txt + "   Ma:"+master_now_txt, file=file)
+    print("Lv:"+living_now_txt  + "   Ba:"+basement_now_txt, file=file)
 
 
 with open(current_file_directory+'/forecast.pkl', 'rb') as file:
@@ -174,6 +194,8 @@ else:
     print("  hi lo", file=wx_week)
     for i in forecast['values']:
         print(DAY_MAP[i[2]], i[0], i[1], file=wx_week)
+
+#print("L:"+ladyden_now_txt, file=wx_week)
     
 wx_hour.close()
 wx_week.close()

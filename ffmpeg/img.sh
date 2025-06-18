@@ -46,18 +46,22 @@ while [ 1 ]; do
     for job in `jobs -p`; do wait ${job}; done
     small_dims="scale=640:360"
     
-    testargs="[0:v]crop=2520:1380:1326:365,scale=1920:1080[bg];[1:v]$small_dims[1];[2:v]$small_dims[2];[3:v]$small_dims[3];[1][2][3]vstack=inputs=3[stk];[bg][stk]overlay"
-    testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/center.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=(w-tw)/2-22:y=0:line_spacing=20:expansion=none'"
+    testargs="[0:v]crop=1920:1080:700:165[bg];[1:v]$small_dims[1];[2:v]crop=2520:1380:1326:100,$small_dims[2];[3:v]$small_dims[3];[1][2][3]vstack=inputs=3[stk];[bg][stk]overlay"
+    testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/center.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-670:y=0:line_spacing=20:expansion=none'"
     testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/wx_forecast_hour.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw:y=0:line_spacing=20:expansion=none'"
     testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/wx_forecast_week.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw:y=180:line_spacing=20:expansion=none'"
 
     stdlog "Starting ffmpeg framebuffer"
 
-    
+    #get the latest iamge off disk of the cabin
+    cabin=$(find "/home/turbohoje/lapse-pi/archive/0/$(date +%F)" \
+     -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) \
+     -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)
+
     ffmpeg -err_detect aggressive -fflags discardcorrupt  \
-    -i "$wd/imgproc/3.jpg" \
+    -i "$cabin" \
     -i "$wd/imgproc/0.jpg" \
-    -i "$wd/imgproc/4.jpg" \
+    -i "$wd/imgproc/3.jpg" \
     -i "$wd/imgproc/1.jpg" \
     -filter_complex $testargs \
     -vframes 1 \
