@@ -27,9 +27,10 @@ while [ 1 ]; do
     sec=$(date +"%S")
     curl -k -s "https://10.22.14.58/cgi-bin/api.cgi?cmd=Snap&channel=0&user=${un}&password=${pass}" -o $wd/imgproc/0.jpg || true &
     curl -k -s "https://${nvr}/cgi-bin/api.cgi?cmd=Snap&channel=1&user=${un}&password=${pass}" -o $wd/imgproc/1.jpg || true &
-    curl -k -s "https://${nvr}/cgi-bin/api.cgi?cmd=Snap&channel=2&user=${un}&password=${pass}" -o $wd/imgproc/2.jpg || true & 
+    #curl -k -s "https://${nvr}/cgi-bin/api.cgi?cmd=Snap&channel=2&user=${un}&password=${pass}" -o $wd/imgproc/2.jpg || true & 
     curl -k -s "https://10.22.14.61/cgi-bin/api.cgi?cmd=Snap&channel=0&user=${un}&password=${pass}" -o $wd/imgproc/3.jpg || true & 
-    curl -k -s "https://10.22.14.60/cgi-bin/api.cgi?cmd=Snap&channel=0&user=${un}&password=${pass}" -o $wd/imgproc/4.jpg || true &
+    #curl -k -s "https://10.22.14.60/cgi-bin/api.cgi?cmd=Snap&channel=0&user=${un}&password=${pass}" -o $wd/imgproc/4.jpg || true &
+    
     #if [[ $((min % 15)) -eq 0 ]] && [[ $sec -lt 5 ]]; then
     # moved to separate cron
     # if (( sec < 6 )); then
@@ -46,7 +47,7 @@ while [ 1 ]; do
     for job in `jobs -p`; do wait ${job}; done
     small_dims="scale=640:360"
     
-    testargs="[0:v]crop=1920:1080:700:165[bg];[1:v]$small_dims[1];[2:v]crop=2520:1380:1326:100,$small_dims[2];[3:v]$small_dims[3];[1][2][3]vstack=inputs=3[stk];[bg][stk]overlay"
+    testargs="[0:v]scale=-1:1080,crop=1280:1080:(in_w-1280)/2:0[bg];[1:v]$small_dims[1];[2:v]crop=2520:1380:1326:100,$small_dims[2];[3:v]$small_dims[3];[1][2][3]vstack=inputs=3[stk];[stk][bg]hstack"
     testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/center.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-670:y=0:line_spacing=20:expansion=none'"
     testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/wx_forecast_hour.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw:y=0:line_spacing=20:expansion=none'"
     testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/wx_forecast_week.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw:y=180:line_spacing=20:expansion=none'"
@@ -54,12 +55,12 @@ while [ 1 ]; do
     stdlog "Starting ffmpeg framebuffer"
 
     #get the latest iamge off disk of the cabin
-    cabin=$(find "/home/turbohoje/lapse-pi/archive/0/$(date +%F)" \
-     -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) \
-     -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)
+    # cabin=$(find "/home/turbohoje/lapse-pi/archive/1/$(date +%F)" \
+    #  -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) \
+    #  -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)
 
     ffmpeg -err_detect aggressive -fflags discardcorrupt  \
-    -i "$cabin" \
+    -i "$wd/imgproc/random.jpg" \
     -i "$wd/imgproc/0.jpg" \
     -i "$wd/imgproc/3.jpg" \
     -i "$wd/imgproc/1.jpg" \
