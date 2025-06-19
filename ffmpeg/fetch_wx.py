@@ -193,7 +193,10 @@ if(diff.days > 1):
 else:
     print("  hi lo", file=wx_week)
     for i in forecast['values']:
-        print(DAY_MAP[i[2]], i[0], i[1], file=wx_week)
+        a = DAY_MAP[i[2]]
+        b = i[0]
+        c = i[1]
+        print(f"{a}{b:>3}{c:>3}", file=wx_week)
 
 #print("L:"+ladyden_now_txt, file=wx_week)
     
