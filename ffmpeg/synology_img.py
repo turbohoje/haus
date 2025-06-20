@@ -19,6 +19,8 @@ import sys
 import shutil
 import glob
 import pickle
+from PIL import Image, ExifTags
+import time
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
@@ -190,12 +192,63 @@ def download_photo_by_id(nas_url, sid, synotoken, image_id, filename='random.jpg
                     if chunk:
                         f.write(chunk)
         print(f"Downloaded image to: {save_path}")
+
+        # Check if the image needs rotation based on EXIF orientation
+        try:
+            img = Image.open(save_path)
+            exif = img._getexif()
+            if exif is not None:
+                orientation_key = next((k for k, v in ExifTags.TAGS.items() if v == 'Orientation'), None)
+                if orientation_key and orientation_key in exif:
+                    orientation = exif[orientation_key]
+                    if orientation == 3:
+                        img = img.rotate(180, expand=True)
+                        img.save(save_path)
+                    elif orientation == 6:
+                        img = img.rotate(270, expand=True)
+                        img.save(save_path)
+                    elif orientation == 8:
+                        img = img.rotate(90, expand=True)
+                        img.save(save_path)
+        except Exception as e:
+            print(f"Could not auto-rotate image: {e}")
+
         return save_path
     except Exception as e:
         print(f"Error downloading image ID {image_id}: {e}")
         return None
 
-# Example usage
+
+def cycle_cached_image():
+    pickle_path = os.path.join(DOWNLOAD_DIR, "image_queue.pkl")
+    if not os.path.exists(pickle_path):
+        print("No pickled image queue found in cache.")
+        return
+    if os.path.exists(pickle_path):
+        with open(pickle_path, "rb") as pf:
+            pickled_data = pickle.load(pf)
+        images = pickled_data.get("images", [])
+        index = pickled_data.get("index", 0)
+        if images:
+            img = images[index % len(images)]
+            img_filename = img.get("filename", f"{img.get('id')}.jpg")
+            src_path = os.path.join(DOWNLOAD_CACHE_DIR, img_filename)
+            dest_path = os.path.join(DOWNLOAD_DIR, "random.jpg")
+            if os.path.exists(src_path):
+                shutil.copy(src_path, dest_path)
+                print(f"Copied {src_path} to {dest_path}")
+                # Advance index and save
+                pickled_data["index"] = (index + 1) % len(images)
+                with open(pickle_path, "wb") as pf:
+                    pickle.dump(pickled_data, pf)
+            else:
+                print(f"File {src_path} not found in cache.")
+        else:
+            print("No images in pickled queue.")
+    else:
+        print("No pickled image queue found in cache.")
+
+
 if __name__ == "__main__":
 
     download_flag = "--download" in sys.argv
@@ -214,6 +267,14 @@ if __name__ == "__main__":
         print(f"Found {len(images)} images with tag 'tv'.")
 
         if download_flag and images:
+            pickle_path = os.path.join(DOWNLOAD_DIR, "image_queue.pkl")
+            if os.path.exists(pickle_path):
+                try:
+                    os.remove(pickle_path)
+                    print(f"Deleted pickle file: {pickle_path}")
+                except Exception as e:
+                    print(f"Could not delete pickle file: {e}")
+
             for f in glob.glob(os.path.join(DOWNLOAD_CACHE_DIR, "*")):
                 try:
                     os.remove(f)
@@ -250,28 +311,9 @@ if __name__ == "__main__":
         # download_photo_by_id(NAS_URL, auth["sid"], auth["synotoken"], image_id=image_id)
 
         else:
-            pickle_path = os.path.join(DOWNLOAD_DIR, "image_queue.pkl")
-            if os.path.exists(pickle_path):
-                with open(pickle_path, "rb") as pf:
-                    pickled_data = pickle.load(pf)
-                images = pickled_data.get("images", [])
-                index = pickled_data.get("index", 0)
-                if images:
-                    img = images[index % len(images)]
-                    img_filename = img.get("filename", f"{img.get('id')}.jpg")
-                    src_path = os.path.join(DOWNLOAD_CACHE_DIR, img_filename)
-                    dest_path = os.path.join(DOWNLOAD_DIR, "random.jpg")
-                    if os.path.exists(src_path):
-                        shutil.copy(src_path, dest_path)
-                        print(f"Copied {src_path} to {dest_path}")
-                        # Advance index and save
-                        pickled_data["index"] = (index + 1) % len(images)
-                        with open(pickle_path, "wb") as pf:
-                            pickle.dump(pickled_data, pf)
-                    else:
-                        print(f"File {src_path} not found in cache.")
-                else:
-                    print("No images in pickled queue.")
-            else:
-                print("No pickled image queue found in cache.")
+            cycle_cached_image()
+            time.sleep(20)
+            cycle_cached_image()
+            time.sleep(20)
+            cycle_cached_image()
     
