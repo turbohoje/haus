@@ -21,6 +21,7 @@ import glob
 import pickle
 from PIL import Image, ExifTags
 import time
+import pprint
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
@@ -198,6 +199,8 @@ def download_photo_by_id(nas_url, sid, synotoken, image_id, filename='random.jpg
             img = Image.open(save_path)
             exif = img._getexif()
             if exif is not None:
+                #pprint.pprint(exif)
+
                 orientation_key = next((k for k, v in ExifTags.TAGS.items() if v == 'Orientation'), None)
                 if orientation_key and orientation_key in exif:
                     orientation = exif[orientation_key]
@@ -249,6 +252,43 @@ def cycle_cached_image():
         print("No pickled image queue found in cache.")
 
 
+def get_exif_by_photo_id(nas_url, sid, synotoken, image_id):
+    """
+    Retrieves EXIF metadata for a photo from Synology Photos by image ID.
+
+    :param nas_url: Base NAS URL (e.g., https://192.168.1.100:5001)
+    :param sid: Synology session ID
+    :param synotoken: Synology token
+    :param image_id: The ID of the photo
+    :return: Dictionary with EXIF metadata or None
+    """
+    url = f"{nas_url}/webapi/entry.cgi"
+    params = {
+        "api": "SYNO.Foto.Browse.Item",
+        "method": "get",
+        "version": "5",
+        "id": f"[{image_id}]",
+        "additional": '["exif"]'
+    }
+    headers = {
+        "X-SYNO-TOKEN": synotoken,
+        "Cookie": f"id={sid}"
+    }
+
+    try:
+        response = requests.get(url, params=params, headers=headers, cookies={"id": sid}, verify=VERIFY_SSL)
+        response.raise_for_status()
+        data = response.json()
+        if data.get("success"):
+            print(data)
+            return data["data"].get("additional", {}).get("exif", {})
+        else:
+            print(f"EXIF retrieval failed: {data}")
+            return None
+    except Exception as e:
+        print(f"Error retrieving EXIF for image ID {image_id}: {e}")
+        return None
+
 if __name__ == "__main__":
 
     download_flag = "--download" in sys.argv
@@ -282,6 +322,8 @@ if __name__ == "__main__":
                     print(f"Could not remove {f}: {e}")
             for img in images:
                 img_id = img.get('id')
+                #print("exif")
+                #print(get_exif_by_photo_id(NAS_URL, auth["sid"], auth["synotoken"], img_id))
                 filename = img.get('filename', f"{img_id}.jpg")
                 download_photo_by_id(NAS_URL, auth["sid"], auth["synotoken"], image_id=img_id, filename=filename, download_dir=DOWNLOAD_CACHE_DIR)
             # Shuffle images list
