@@ -23,7 +23,7 @@ dd if=/dev/zero count=10000 bs=1024 > /dev/fb0
 ip=10.22.14.9
 
 while [ 1 ]; do
-
+  sleep 0.1 
   date=$(date +"%a %b%d  %H:%M:%S")
   echo "$date" > $wd/center.txt
   cat $wd/center_wx.txt >> $wd/center.txt
