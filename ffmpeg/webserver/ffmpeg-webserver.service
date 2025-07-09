@@ -1,0 +1,26 @@
+[Unit]
+Description=FFmpeg Web Server
+After=network.target
+
+[Service]
+# Run under your regular user account. Change if you prefer a dedicated service user.
+User=turbohoje
+Group=turbohoje
+
+# Project root so relative file paths & logs resolve correctly
+WorkingDirectory=/home/turbohoje/haus/ffmpeg/webserver
+
+# Call the venv’s Python interpreter directly
+ExecStart=/home/turbohoje/haus/ffmpeg/webserver/.venv/bin/python /home/turbohoje/haus/ffmpeg/webserver/app.py
+
+# Recommended hardening & reliability tweaks
+Restart=on-failure
+RestartSec=5
+Environment="PYTHONUNBUFFERED=1"
+
+# Optional: limit resource runaway
+# MemoryMax=500M
+
+[Install]
+WantedBy=multi-user.target
+

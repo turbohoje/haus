@@ -17,7 +17,7 @@ import threading
 WD = os.environ.get("WD", os.getcwd())
 IMAGE_PATH = os.path.join(WD, "../imgproc", "output.jpg")
 HOST, PORT = "0.0.0.0", 3000
-MAX_EMIT_HZ = 1            # <= 1 refresh per second
+MAX_EMIT_HZ = 5            # <= 1 refresh per second
 
 print(f"[BOOT]   WD  = {WD}")
 print(f"[BOOT]   IMG = {IMAGE_PATH}")
@@ -117,7 +117,7 @@ if __name__ == "__main__":
     print(f"[BOOT]   Watching {IMAGE_PATH}")
     print(f"[BOOT]   http://{HOST}:{PORT}")
     try:
-        socketio.run(app, host=HOST, port=PORT, debug=False)
+        socketio.run(app, host=HOST, port=PORT, debug=False, allow_unsafe_werkzeug=True)
     finally:
         observer.stop()
         observer.join()
