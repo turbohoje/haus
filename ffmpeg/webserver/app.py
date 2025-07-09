@@ -9,6 +9,7 @@ from flask import Flask, send_file, render_template_string
 from flask_socketio import SocketIO
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+import threading
 
 # --------------------------------------------------------------------------
 # Configuration
@@ -77,9 +78,18 @@ def _on_disconnect(): print("[WS]     Browser disconnected")
 # Watchdog with rate-limit
 # --------------------------------------------------------------------------
 class ChangeHandler(FileSystemEventHandler):
+    def periodic_emit(self): #used for testing locally wo modifying a file
+        while True: 
+            print("test")
+            time.sleep(2)
+            self.on_modified(type("Event", (), {"src_path": IMAGE_PATH})())  # Simulate a file change event
+
+
     def __init__(self):
         super().__init__()
         self.last_emit = 0.0          # seconds from time.monotonic()
+        # threading.Thread(target=self.periodic_emit, daemon=True).start()
+        # print("ch init")
 
     def on_modified(self, event):
         if event.src_path != IMAGE_PATH:
@@ -102,6 +112,7 @@ class ChangeHandler(FileSystemEventHandler):
 if __name__ == "__main__":
     observer = Observer()
     observer.schedule(ChangeHandler(), os.path.dirname(IMAGE_PATH), recursive=False)
+
     observer.start()
     print(f"[BOOT]   Watching {IMAGE_PATH}")
     print(f"[BOOT]   http://{HOST}:{PORT}")
