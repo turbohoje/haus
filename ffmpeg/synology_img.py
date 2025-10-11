@@ -22,6 +22,9 @@ import pickle
 from PIL import Image, ExifTags
 import time
 import pprint
+from PIL import Image
+import pillow_heif
+import os
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
@@ -158,6 +161,36 @@ def search_photos_by_general_tag(nas_url, sid, synotoken, tag_id):
         return []
 
 
+def convert_heic_to_jpg(input_path, output_path=None, quality=90):
+    """
+    Convert a HEIC image to JPEG format using Pillow and pillow-heif.
+
+    :param input_path: Path to the .heic file
+    :param output_path: Optional; output path for the .jpg file. Defaults to same basename.
+    :param quality: JPEG quality (1–100)
+    :return: Path to the converted JPG file
+    """
+    # Ensure pillow-heif is registered with Pillow
+    pillow_heif.register_heif_opener()
+
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Input file not found: {input_path}")
+
+    # Default output path
+    if output_path is None:
+        base, _ = os.path.splitext(input_path)
+        output_path = f"{base}.jpg"
+
+    try:
+        img = Image.open(input_path)
+        img = img.convert("RGB")  # JPEG doesn’t support alpha channel
+        img.save(output_path, "JPEG", quality=quality)
+        print(f"Converted HEIC to JPG: {output_path}")
+        return output_path
+    except Exception as e:
+        print(f"Error converting HEIC to JPG: {e}")
+        return None
+
 def download_photo_by_id(nas_url, sid, synotoken, image_id, filename='random.jpg', download_dir=DOWNLOAD_DIR):
     """
     Downloads a Synology Photos image by ID and saves it as 'random.<ext>' in the specified directory.
@@ -203,6 +236,12 @@ def download_photo_by_id(nas_url, sid, synotoken, image_id, filename='random.jpg
                     if chunk:
                         f.write(chunk)
         print(f"Downloaded image to: {save_path}")
+
+        if ".heic" in save_path.lower():
+            jpg_path = convert_heic_to_jpg(save_path)
+            if jpg_path:
+                os.remove(save_path)
+                save_path = jpg_path
 
         # Check if the image needs rotation based on EXIF orientation
         try:
@@ -493,7 +532,9 @@ if __name__ == "__main__":
                 #print("exif")
                 #print(get_exif_by_photo_id(NAS_URL, auth["sid"], auth["synotoken"], img_id))
                 filename = img.get('filename', f"{img_id}.jpg")
-                download_photo_by_id(NAS_URL, auth["sid"], auth["synotoken"], image_id=img_id, filename=filename, download_dir=DOWNLOAD_CACHE_DIR)
+                fn = download_photo_by_id(NAS_URL, auth["sid"], auth["synotoken"], image_id=img_id, filename=filename, download_dir=DOWNLOAD_CACHE_DIR)
+                if fn is not None:
+                    img["filename"] = fn
             # Shuffle images list
             random.shuffle(images)
 
