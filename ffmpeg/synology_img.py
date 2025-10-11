@@ -42,7 +42,8 @@ def get_synology_token(nas_url, username, password):
         "method": "login",
         "account": username,
         "passwd": password,
-        "session": "FileStation",  # you can use "SurveillanceStation", "DownloadStation", etc., or "FileStation" for generic access
+        #"session": "FileStation",  # you can use "SurveillanceStation", "DownloadStation", etc., or "FileStation" for generic access
+        "session": "PhotoStation",
         "format": "cookie"
     }
 
@@ -173,10 +174,19 @@ def download_photo_by_id(nas_url, sid, synotoken, image_id, filename='random.jpg
     save_path = os.path.join(download_dir, f"{filename}")
 
     download_url = f"{nas_url}/webapi/entry.cgi"
+    # this version for tags.
+    # params = {
+    #     "api": "SYNO.Foto.Download",
+    #     "method": "download",
+    #     "version": "2",
+    #     "unit_id": f"[{image_id}]",
+    #     "type": "original"
+    # }
+    #this version from shared space
     params = {
-        "api": "SYNO.Foto.Download",
+        "api": "SYNO.FotoTeam.Download",
         "method": "download",
-        "version": "2",
+        "version": "1",
         "unit_id": f"[{image_id}]",
         "type": "original"
     }
@@ -289,6 +299,160 @@ def get_exif_by_photo_id(nas_url, sid, synotoken, image_id):
         print(f"Error retrieving EXIF for image ID {image_id}: {e}")
         return None
 
+
+def get_images_in_shared_space(nas_url, sid, synotoken, path=""):
+    """
+    Return a list of photo items from Synology Photos *Shared Space* under a given folder path.
+
+    This walks the Shared Space folder tree (e.g., "tv", "tv/2024/trips") and then lists all
+    photo items in the target folder. It handles API version differences gracefully and
+    paginates through results until all items are fetched.
+
+    :param nas_url: Base NAS URL (e.g., https://192.168.1.100:5001)
+    :param sid: Synology session ID
+    :param synotoken: Synology token
+    :param path: Shared Space folder path, like "tv" or "tv/2024"
+    :return: List of dicts for each photo (each item includes at least 'id' and 'filename')
+    """
+    import requests
+
+    headers = {
+        "X-SYNO-TOKEN": synotoken,
+        "Cookie": f"id={sid}",
+    }
+
+    def _req(params):
+        return requests.get(
+            f"{nas_url}/webapi/entry.cgi",
+            params=params,
+            headers=headers,
+            cookies={"id": sid},
+            verify=VERIFY_SSL,
+            timeout=30,
+        )
+
+    def _first_success(api, method, versions, **params):
+        """
+        Try the provided versions in order and return (version, data_json) on first success.
+        """
+        last_err = None
+        for v in versions:
+            try:
+                p = {"api": api, "method": method, "version": str(v)}
+                p.update(params)
+                r = _req(p)
+                r.raise_for_status()
+                j = r.json()
+                if j.get("success"):
+                    return v, j
+                last_err = j
+            except Exception as e:
+                last_err = {"error": str(e)}
+        raise RuntimeError(f"{api}.{method} failed across versions {versions}: {last_err}")
+
+    def _resolve_shared_folder_id(folder_path):
+        """
+        Resolve a Shared Space folder path (e.g., 'tv/2024') to its numeric folder_id.
+        Shared Space uses the 'SYNO.FotoTeam.Browse.Folder' API.
+        """
+        # Root of Shared Space is typically id=0 (team space root).
+        current_id = 0
+        trimmed = (folder_path or "").strip().strip("/")
+        if not trimmed:
+            return current_id
+
+        parts = [p for p in trimmed.split("/") if p]
+
+        for part in parts:
+            # list children of the current folder and find `part`
+            _, j = _first_success(
+                api="SYNO.FotoTeam.Browse.Folder",
+                method="list",
+                versions=[3, 2, 1],  # try newer to older
+                id=str(current_id),
+                additional='["permission"]',
+                offset=0,
+                limit=10000,
+            )
+            children = (j.get("data") or {}).get("list") or []
+            match = None
+            for c in children:
+                # child folder entries typically have a "name" and "id"
+                if str(c.get("name", "")).lower() == part.lower():
+                    match = c
+                    break
+            if not match:
+                raise FileNotFoundError(f"Shared Space folder part not found: '{part}' under id={current_id}")
+            current_id = match.get("id")
+            if current_id is None:
+                raise RuntimeError(f"Folder entry missing id for '{part}'")
+
+        return current_id
+
+    # 1) Resolve the target folder id in Shared Space
+    try:
+        #this doesnt work, so hardcoding for now
+        #folder_id = _resolve_shared_folder_id(path)
+        folder_id = 501
+    except Exception as e:
+        print(f"Error resolving shared folder path '{path}': {e}")
+        return []
+
+    # 2) List all items in that folder (photos only), handling pagination
+    all_items = []
+    offset = 0
+    limit = 1000
+
+    while True:
+        try:
+            # Some DSM builds use "filter":"photo"; others use "type":"photo".
+            # We'll attempt one, and if it returns empty-but-successful, we'll also try the other.
+            tried = []
+
+            def _list_items(with_key, value):
+                tried.append((with_key, value))
+                return _first_success(
+                    api="SYNO.FotoTeam.Browse.Item",
+                    method="list",
+                    versions=[5, 4, 3, 2, 1],
+                    folder_id=str(folder_id),
+                    offset=offset,
+                    limit=limit,
+                    additional='["thumbnail","resolution","exif","video_convert","video_meta","address"]',
+                    **{with_key: value},
+                )
+
+            # Try with "filter":"photo"
+            try:
+                _, j = _list_items("filter", "photo")
+                batch = (j.get("data") or {}).get("list") or []
+                total = (j.get("data") or {}).get("total", 0)
+            except Exception:
+                # Fallback to "type":"photo"
+                _, j = _list_items("type", "photo")
+                batch = (j.get("data") or {}).get("list") or []
+                total = (j.get("data") or {}).get("total", 0)
+
+            # Filter strictly to photo-like items (defensive)
+            photos = [it for it in batch if str(it.get("type", "photo")).lower() == "photo" or not it.get("is_video")]
+            # Normalize essentials; keep original item too for later use
+            for it in photos:
+                all_items.append({
+                    "id": it.get("id"),
+                    "filename": it.get("filename") or it.get("name") or f"{it.get('id')}.jpg",
+                    **it
+                })
+
+            offset += len(batch)
+            if offset >= max(total, len(batch)):
+                break
+
+        except Exception as e:
+            print(f"Error listing items in folder_id={folder_id} (offset {offset}, limit {limit}): {e}")
+            break
+
+    return all_items
+
 if __name__ == "__main__":
 
     download_flag = "--download" in sys.argv
@@ -301,10 +465,14 @@ if __name__ == "__main__":
 
         #print(get_general_tag_id(NAS_URL, auth["sid"], auth["synotoken"], "tv"))
 
-        images = search_photos_by_general_tag(NAS_URL, auth["sid"], auth["synotoken"], tag_id=4)
+        #images = search_photos_by_general_tag(NAS_URL, auth["sid"], auth["synotoken"], tag_id=4)
+        #abandoning this approach as the tags are not shared by users
+
+        images = get_images_in_shared_space(NAS_URL, auth["sid"], auth["synotoken"], path="501")
+
         for img in images:
             print(f"- {img.get('filename')} (ID: {img.get('id')})")
-        print(f"Found {len(images)} images with tag 'tv'.")
+        print(f"Found {len(images)} images in shared space 'tv'")
 
         if download_flag and images:
             pickle_path = os.path.join(DOWNLOAD_DIR, "image_queue.pkl")
