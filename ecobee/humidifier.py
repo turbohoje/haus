@@ -17,9 +17,20 @@ last_slash_index = current_directory.rfind("/")+1
 current_directory = current_directory[:last_slash_index]
 token_file = current_directory+"token.json"
 
-with open(token_file, "r") as f:
-    tok = json.load(f)
+try:
+    with open(token_file, "r") as f:
+        tok = json.load(f)
+except FileNotFoundError:
+    print(f"ERROR: token file not found: {token_file}", file=sys.stderr)
+    sys.exit(1)
+except json.JSONDecodeError as e:
+    print(f"ERROR: token file is not valid JSON: {e}", file=sys.stderr)
+    sys.exit(1)
+except Exception as e:
+    print(f"ERROR: failed to load token file: {e}", file=sys.stderr)
+    sys.exit(1)
 
+#print(tok)
 
 ecobee_service = EcobeeService(
     thermostat_name='Main FLoor',
@@ -28,6 +39,7 @@ ecobee_service = EcobeeService(
     access_token = tok['access_token'] 
 )
 
+
 #used to get pin 
 #authorize_response = ecobee_service.authorize()
 #print(authorize_response.pretty_format())
@@ -35,6 +47,8 @@ ecobee_service = EcobeeService(
 
 #or hit this url: https://api.ecobee.com/authorize?response_type=ecobeePin&client_id=SukJ7Wfaw3TnPuKrlX2xDf3NHIwDmAxU&scope=smartRead,smartWrite,offline_access,thermostat
 # and put the contents in token.json
+
+# curl -X POST https://api.ecobee.com/token -H "Content-Type: application/x-www-form-urlencoded"  --data "grant_type=ecobeePin&code=SRrdAJ5b5ddp8IB50sqShiDjSRrdAJ5b5ddp8IB50sqShiDj&client_id=SukJ7Wfaw3TnPuKrlX2xDf3NHIwDmAxU"
 
 # check and get fresh access token
 ecobee_service.refresh_tokens() 
@@ -53,9 +67,18 @@ nt = {
 
 
 #save token off to disk
-with open(token_file, "w") as outfile:
-    outfile.write(json.dumps(nt))
-
+try:
+    with open(token_file, "w") as outfile:
+        outfile.write(json.dumps(nt))
+except FileNotFoundError:
+    print(f"ERROR: token file not found: {token_file}", file=sys.stderr)
+    sys.exit(1)
+except json.JSONDecodeError as e:
+    print(f"ERROR: token file is not valid JSON: {e}", file=sys.stderr)
+    sys.exit(1)
+except Exception as e:
+    print(f"ERROR: failed to load token file: {e}", file=sys.stderr)
+    sys.exit(1)
 
 #working summary response
 # thermostat_summary_response = ecobee_service.request_thermostats_summary(selection=Selection(
