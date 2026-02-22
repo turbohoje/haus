@@ -2,3 +2,4 @@ ffmpeg/imgproc/
 ffmpeg/screen.txt
 ffmpeg/wx.txt
 ecobee/token*
+**/.venv
