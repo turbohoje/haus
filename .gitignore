@@ -1,5 +1,8 @@
 ffmpeg/imgproc/
 ffmpeg/screen.txt
-ffmpeg/wx.txt
+ffmpeg/*.txt
+ffmpeg/cache/
 ecobee/token*
 **/.venv
+**/.env
+**/*.pkl
