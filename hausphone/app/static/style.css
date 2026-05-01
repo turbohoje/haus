@@ -119,6 +119,41 @@ html, body {
 }
 .expand-btn.open { transform: rotate(180deg); }
 
+/* ── Side-by-side card pair ── */
+.card-pair {
+  display: flex;
+  align-items: stretch;
+}
+.card-half {
+  flex: 1;
+  min-width: 0;
+}
+.card-pair-divider {
+  width: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.card-half .card-header {
+  padding: 12px 10px;
+  gap: 6px;
+}
+.card-half .card-label {
+  font-size: 0.82rem;
+}
+.card-half .toggle-btn {
+  min-width: 60px;
+  font-size: 0.9rem;
+}
+.card-half .card-detail {
+  padding: 4px 10px 12px;
+}
+@media (max-width: 767px) {
+  .card-half .toggle-btn {
+    min-width: 66px;
+    height: 50px;
+  }
+}
+
 /* ── Slider section ── */
 .card-detail {
   display: none;

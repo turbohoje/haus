@@ -32,7 +32,7 @@ def _get_device(ip: str):
     except ImportError:
         raise RuntimeError("pywemo not installed — wemo controls disabled")
     url = f"http://{ip}:49153/setup.xml"
-    return pywemo.discovery.device_from_description(url, None)
+    return pywemo.discovery.device_from_description(url)
 
 
 def get_state() -> dict:

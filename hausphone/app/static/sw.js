@@ -1,4 +1,4 @@
-const CACHE = "haus-v1";
+const CACHE = "haus-v7";
 const SHELL = ["/", "/static/style.css", "/static/app.js", "/manifest.json", "/static/placeholder.jpg"];
 
 self.addEventListener("install", e => {

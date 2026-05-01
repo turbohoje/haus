@@ -10,6 +10,8 @@ SVC = "urn:upnp-org:serviceId:SwitchPower1"
 DEVICES = {
     "light_west": {"id": 39, "label": "Light West"},
     "light_east": {"id": 40, "label": "Light East"},
+    "attic1": {"id": 67, "label": "Attic1"},
+    "attic2": {"id": 68, "label": "Attic2"},
 }
 
 _state: dict = {k: None for k in DEVICES}

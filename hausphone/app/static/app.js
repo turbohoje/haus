@@ -41,7 +41,7 @@ const isStandalone = window.matchMedia("(display-mode: standalone)").matches;
 if (isIos && !isStandalone && !deferredInstallPrompt) {
   const bar = installBar;
   bar.querySelector("#install-text").textContent =
-    "Install: tap Share then "Add to Home Screen"";
+    'Install: tap Share then “Add to Home Screen”';
   bar.classList.add("visible");
   document.getElementById("install-btn").style.display = "none";
 }
@@ -198,6 +198,8 @@ function bindVera(deviceKey, btnId) {
 }
 bindVera("light_west", "vera-west-toggle");
 bindVera("light_east", "vera-east-toggle");
+bindVera("attic1", "vera-attic1-toggle");
+bindVera("attic2", "vera-attic2-toggle");
 
 // ── WeMo ──────────────────────────────────────────────────────────────────
 function bindWemo(deviceName, btnId, badgeId) {
@@ -246,8 +248,12 @@ function renderAll() {
   const v = state.vera;
   setToggle(document.getElementById("vera-west-toggle"), v.light_west);
   setToggle(document.getElementById("vera-east-toggle"), v.light_east);
+  setToggle(document.getElementById("vera-attic1-toggle"), v.attic1);
+  setToggle(document.getElementById("vera-attic2-toggle"), v.attic2);
   setDot(document.getElementById("vera-west-dot"), v.light_west);
   setDot(document.getElementById("vera-east-dot"), v.light_east);
+  setDot(document.getElementById("vera-attic1-dot"), v.attic1);
+  setDot(document.getElementById("vera-attic2-dot"), v.attic2);
 
   const wf = state.wemo.water_feature;
   setToggle(document.getElementById("wemo-water-toggle"), wf?.on);

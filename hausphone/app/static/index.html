@@ -26,13 +26,26 @@
   <!-- ── Controls ── -->
   <div id="controls">
 
-    <!-- Fan -->
+    <!-- Bedroom Fan + Light -->
     <div class="card">
-      <div class="card-header">
-        <span class="status-dot" id="fan-dot"></span>
-        <span class="card-label">Fan</span>
-        <button class="toggle-btn" id="fan-toggle">OFF</button>
-        <button class="expand-btn" id="fan-expand" aria-label="Adjust speed">&#8964;</button>
+      <div class="card-pair">
+        <div class="card-half">
+          <div class="card-header">
+            <span class="status-dot" id="fan-dot"></span>
+            <span class="card-label">MaFan</span>
+            <button class="toggle-btn" id="fan-toggle">OFF</button>
+            <button class="expand-btn" id="fan-expand" aria-label="Adjust speed">&#8964;</button>
+          </div>
+        </div>
+        <div class="card-pair-divider"></div>
+        <div class="card-half">
+          <div class="card-header">
+            <span class="status-dot" id="fanlight-dot"></span>
+            <span class="card-label">MaLight</span>
+            <button class="toggle-btn" id="fanlight-toggle">OFF</button>
+            <button class="expand-btn" id="fanlight-expand" aria-label="Adjust brightness">&#8964;</button>
+          </div>
+        </div>
       </div>
       <div class="card-detail" id="fan-detail">
         <div class="slider-row">
@@ -40,16 +53,6 @@
           <input type="range" id="fan-speed" min="0" max="100" value="0">
           <span class="slider-val" id="fan-speed-val">0%</span>
         </div>
-      </div>
-    </div>
-
-    <!-- Fan light -->
-    <div class="card">
-      <div class="card-header">
-        <span class="status-dot" id="fanlight-dot"></span>
-        <span class="card-label">Fan Light</span>
-        <button class="toggle-btn" id="fanlight-toggle">OFF</button>
-        <button class="expand-btn" id="fanlight-expand" aria-label="Adjust brightness">&#8964;</button>
       </div>
       <div class="card-detail" id="fanlight-detail">
         <div class="slider-row">
@@ -60,21 +63,45 @@
       </div>
     </div>
 
-    <!-- Light West -->
+    <!-- Lght W + Lght E -->
     <div class="card">
-      <div class="card-header">
-        <span class="status-dot" id="vera-west-dot"></span>
-        <span class="card-label">Light West</span>
-        <button class="toggle-btn" id="vera-west-toggle">OFF</button>
+      <div class="card-pair">
+        <div class="card-half">
+          <div class="card-header">
+            <span class="status-dot" id="vera-west-dot"></span>
+            <span class="card-label">Lght W</span>
+            <button class="toggle-btn" id="vera-west-toggle">OFF</button>
+          </div>
+        </div>
+        <div class="card-pair-divider"></div>
+        <div class="card-half">
+          <div class="card-header">
+            <span class="status-dot" id="vera-east-dot"></span>
+            <span class="card-label">Lght E</span>
+            <button class="toggle-btn" id="vera-east-toggle">OFF</button>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- Light East -->
+    <!-- Attic1 + Attic2 -->
     <div class="card">
-      <div class="card-header">
-        <span class="status-dot" id="vera-east-dot"></span>
-        <span class="card-label">Light East</span>
-        <button class="toggle-btn" id="vera-east-toggle">OFF</button>
+      <div class="card-pair">
+        <div class="card-half">
+          <div class="card-header">
+            <span class="status-dot" id="vera-attic1-dot"></span>
+            <span class="card-label">Attic1</span>
+            <button class="toggle-btn" id="vera-attic1-toggle">OFF</button>
+          </div>
+        </div>
+        <div class="card-pair-divider"></div>
+        <div class="card-half">
+          <div class="card-header">
+            <span class="status-dot" id="vera-attic2-dot"></span>
+            <span class="card-label">Attic2</span>
+            <button class="toggle-btn" id="vera-attic2-toggle">OFF</button>
+          </div>
+        </div>
       </div>
     </div>
 

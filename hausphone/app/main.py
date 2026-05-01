@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Set
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
@@ -120,28 +120,28 @@ async def get_state():
 # Fan control
 # --------------------------------------------------------------------------
 @app.post("/api/fan/power")
-async def fan_power(body: dict):
+async def fan_power(body: dict = Body(...)):
     state = await fan.set_fan_power(bool(body.get("on")))
     await broadcast({"type": "state", "data": {"fan": state}})
     return state
 
 
 @app.post("/api/fan/speed")
-async def fan_speed(body: dict):
+async def fan_speed(body: dict = Body(...)):
     state = await fan.set_fan_speed(int(body.get("percent", 0)))
     await broadcast({"type": "state", "data": {"fan": state}})
     return state
 
 
 @app.post("/api/light/power")
-async def light_power(body: dict):
+async def light_power(body: dict = Body(...)):
     state = await fan.set_light_power(bool(body.get("on")))
     await broadcast({"type": "state", "data": {"fan": state}})
     return state
 
 
 @app.post("/api/light/brightness")
-async def light_brightness(body: dict):
+async def light_brightness(body: dict = Body(...)):
     state = await fan.set_light_brightness(int(body.get("percent", 0)))
     await broadcast({"type": "state", "data": {"fan": state}})
     return state
@@ -151,7 +151,7 @@ async def light_brightness(body: dict):
 # Vera control
 # --------------------------------------------------------------------------
 @app.post("/api/vera/{device_key}/power")
-async def vera_power(device_key: str, body: dict):
+async def vera_power(device_key: str, body: dict = Body(...)):
     state = await vera.set_power(device_key, bool(body.get("on")))
     await broadcast({"type": "state", "data": {"vera": state}})
     return state
@@ -161,7 +161,7 @@ async def vera_power(device_key: str, body: dict):
 # WeMo control
 # --------------------------------------------------------------------------
 @app.post("/api/wemo/{device_name}/power")
-async def wemo_power(device_name: str, body: dict):
+async def wemo_power(device_name: str, body: dict = Body(...)):
     state = await wemo.set_power(device_name, bool(body.get("on")))
     await broadcast({"type": "state", "data": {"wemo": state}})
     return state
@@ -175,8 +175,8 @@ class ImageChangeHandler(FileSystemEventHandler):
         super().__init__()
         self._last_emit = 0.0
 
-    def on_modified(self, event):
-        if event.src_path != IMAGE_PATH:
+    def _maybe_emit(self, path: str):
+        if path != IMAGE_PATH:
             return
         now = time.monotonic()
         if now - self._last_emit < 0.2:
@@ -186,6 +186,15 @@ class ImageChangeHandler(FileSystemEventHandler):
             broadcast({"type": "image_refresh"}),
             _loop,
         )
+
+    def on_modified(self, event):
+        self._maybe_emit(event.src_path)
+
+    def on_created(self, event):
+        self._maybe_emit(event.src_path)
+
+    def on_moved(self, event):
+        self._maybe_emit(event.dest_path)
 
 
 # --------------------------------------------------------------------------
