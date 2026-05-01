@@ -18,6 +18,19 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(console.warn);
 }
 
+// ── Cert install prompt ───────────────────────────────────────────────────
+const certBar = document.getElementById("cert-bar");
+const certDismiss = document.getElementById("cert-dismiss");
+
+if (location.protocol === "https:" && !localStorage.getItem("cert-dismissed")) {
+  certBar.classList.add("visible");
+}
+
+certDismiss?.addEventListener("click", () => {
+  localStorage.setItem("cert-dismissed", "1");
+  certBar.classList.remove("visible");
+});
+
 // ── PWA install prompt ────────────────────────────────────────────────────
 window.addEventListener("beforeinstallprompt", e => {
   e.preventDefault();

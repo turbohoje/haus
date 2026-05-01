@@ -100,6 +100,19 @@ async def index():
     return FileResponse(str(STATIC_DIR / "index.html"))
 
 
+@app.get("/cert.crt")
+async def serve_cert():
+    cert = Path("/certs/cert.pem")
+    if not cert.exists():
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Certificate not found")
+    return FileResponse(
+        str(cert),
+        media_type="application/x-x509-ca-cert",
+        filename="haus-ca.crt",
+    )
+
+
 # --------------------------------------------------------------------------
 # State aggregation
 # --------------------------------------------------------------------------

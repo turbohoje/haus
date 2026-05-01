@@ -5,6 +5,10 @@ services:
     restart: unless-stopped
     volumes:
       - /home/turbohoje/haus/ffmpeg/imgproc:/imgproc:ro
+      - hausphone-certs:/certs
     environment:
       - IMAGE_PATH=/imgproc/output.jpg
     network_mode: host  # needed for pywemo UDP discovery and direct LAN device access
+
+volumes:
+  hausphone-certs:

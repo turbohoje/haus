@@ -208,6 +208,41 @@ html, body {
 }
 .status-dot.on { background: var(--on); }
 
+/* ── Cert install prompt ── */
+#cert-bar {
+  display: none;
+  background: #182818;
+  border-top: 1px solid var(--on);
+  padding: 12px 16px;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+  color: var(--text-dim);
+}
+#cert-bar.visible { display: flex; }
+#cert-bar span { flex: 1; }
+#cert-bar a {
+  background: var(--on);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+}
+#cert-bar button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px 6px;
+  line-height: 1;
+}
+
 /* ── Install prompt ── */
 #install-bar {
   display: none;
