@@ -1,0 +1,10 @@
+services:
+  hausphone:
+    build: .
+    container_name: hausphone
+    restart: unless-stopped
+    volumes:
+      - /home/turbohoje/haus/ffmpeg/imgproc:/imgproc:ro
+    environment:
+      - IMAGE_PATH=/imgproc/output.jpg
+    network_mode: host  # needed for pywemo UDP discovery and direct LAN device access

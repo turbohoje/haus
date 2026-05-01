@@ -1,0 +1,37 @@
+const CACHE = "haus-v1";
+const SHELL = ["/", "/static/style.css", "/static/app.js", "/manifest.json", "/static/placeholder.jpg"];
+
+self.addEventListener("install", e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
+
+self.addEventListener("fetch", e => {
+  const url = new URL(e.request.url);
+
+  // Never cache the live image or API calls
+  if (url.pathname === "/image" || url.pathname.startsWith("/api/") || url.pathname === "/ws") {
+    e.respondWith(fetch(e.request));
+    return;
+  }
+
+  // Network-first for the app shell so updates land on next open
+  e.respondWith(
+    fetch(e.request)
+      .then(res => {
+        const clone = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone));
+        return res;
+      })
+      .catch(() => caches.match(e.request))
+  );
+});

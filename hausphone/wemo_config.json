@@ -1,0 +1,10 @@
+{
+  "devices": [
+    {
+      "name": "water_feature",
+      "label": "Water Feature",
+      "ip": "10.22.14.100",
+      "auto_off_minutes": 120
+    }
+  ]
+}

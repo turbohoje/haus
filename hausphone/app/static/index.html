@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a1a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Haus">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <title>Haus</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- ── Live camera ── -->
+  <div id="camera-wrap">
+    <img id="live-image" src="/image" alt="camera">
+    <div id="offline-banner">
+      <span>Not on home network.</span>
+      <span>Connect to home WiFi or <a href="https://tailscale.com" target="_blank">Tailscale</a> to use controls.</span>
+    </div>
+  </div>
+
+  <!-- ── Controls ── -->
+  <div id="controls">
+
+    <!-- Fan -->
+    <div class="card">
+      <div class="card-header">
+        <span class="status-dot" id="fan-dot"></span>
+        <span class="card-label">Fan</span>
+        <button class="toggle-btn" id="fan-toggle">OFF</button>
+        <button class="expand-btn" id="fan-expand" aria-label="Adjust speed">&#8964;</button>
+      </div>
+      <div class="card-detail" id="fan-detail">
+        <div class="slider-row">
+          <label>Speed</label>
+          <input type="range" id="fan-speed" min="0" max="100" value="0">
+          <span class="slider-val" id="fan-speed-val">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fan light -->
+    <div class="card">
+      <div class="card-header">
+        <span class="status-dot" id="fanlight-dot"></span>
+        <span class="card-label">Fan Light</span>
+        <button class="toggle-btn" id="fanlight-toggle">OFF</button>
+        <button class="expand-btn" id="fanlight-expand" aria-label="Adjust brightness">&#8964;</button>
+      </div>
+      <div class="card-detail" id="fanlight-detail">
+        <div class="slider-row">
+          <label>Dim</label>
+          <input type="range" id="fan-bright" min="0" max="100" value="0">
+          <span class="slider-val" id="fan-bright-val">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Light West -->
+    <div class="card">
+      <div class="card-header">
+        <span class="status-dot" id="vera-west-dot"></span>
+        <span class="card-label">Light West</span>
+        <button class="toggle-btn" id="vera-west-toggle">OFF</button>
+      </div>
+    </div>
+
+    <!-- Light East -->
+    <div class="card">
+      <div class="card-header">
+        <span class="status-dot" id="vera-east-dot"></span>
+        <span class="card-label">Light East</span>
+        <button class="toggle-btn" id="vera-east-toggle">OFF</button>
+      </div>
+    </div>
+
+    <!-- Water Feature -->
+    <div class="card">
+      <div class="card-header">
+        <span class="status-dot" id="wemo-water-dot"></span>
+        <span class="card-label">Water Feature</span>
+        <span class="timer-badge" id="wemo-water-feature-timer"></span>
+        <button class="toggle-btn" id="wemo-water-toggle">OFF</button>
+      </div>
+    </div>
+
+  </div><!-- /controls -->
+
+  <!-- ── Install bar ── -->
+  <div id="install-bar">
+    <span id="install-text">Install Haus on your home screen for quick access.</span>
+    <button id="install-btn">Install</button>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,220 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #111;
+  --surface: #1e1e1e;
+  --surface2: #2a2a2a;
+  --border: #333;
+  --text: #e8e8e8;
+  --text-dim: #888;
+  --accent: #4a9eff;
+  --on: #3dba6f;
+  --off: #444;
+  --warn: #e8a030;
+  --danger: #e85050;
+  --radius: 14px;
+  --gap: 14px;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
+  overflow-x: hidden;
+}
+
+/* ── Camera image ── */
+#camera-wrap {
+  width: 100%;
+  background: #000;
+  position: relative;
+}
+#camera-wrap img {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+#offline-banner {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.72);
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1rem;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+#offline-banner.visible { display: flex; }
+#offline-banner a { color: var(--accent); }
+
+/* ── Controls grid ── */
+#controls {
+  padding: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+/* ── Device card ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  gap: 12px;
+}
+
+.card-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+}
+
+/* ── Toggle button ── */
+.toggle-btn {
+  min-width: 80px;
+  height: 48px;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  background: var(--off);
+  color: var(--text-dim);
+  letter-spacing: 0.03em;
+}
+.toggle-btn.on {
+  background: var(--on);
+  color: #fff;
+}
+.toggle-btn:active { opacity: 0.75; }
+.toggle-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* ── Expand chevron ── */
+.expand-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+.expand-btn.open { transform: rotate(180deg); }
+
+/* ── Slider section ── */
+.card-detail {
+  display: none;
+  padding: 4px 16px 16px;
+  gap: 12px;
+  flex-direction: column;
+}
+.card-detail.open { display: flex; }
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.slider-row label {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  min-width: 48px;
+}
+.slider-row input[type=range] {
+  flex: 1;
+  height: 6px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.slider-val {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ── Timer badge ── */
+.timer-badge {
+  display: none;
+  font-size: 0.78rem;
+  color: var(--warn);
+  padding: 2px 8px;
+  border: 1px solid var(--warn);
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.timer-badge.visible { display: inline-block; }
+
+/* ── Status dot ── */
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--off);
+  flex-shrink: 0;
+}
+.status-dot.on { background: var(--on); }
+
+/* ── Install prompt ── */
+#install-bar {
+  display: none;
+  background: var(--surface2);
+  border-top: 1px solid var(--border);
+  padding: 12px 16px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.88rem;
+  color: var(--text-dim);
+}
+#install-bar.visible { display: flex; }
+#install-bar button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.88rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ── Phone: larger touch targets ── */
+@media (max-width: 767px) {
+  .toggle-btn {
+    min-width: 90px;
+    height: 56px;
+    font-size: 1.05rem;
+    border-radius: 12px;
+  }
+  .card-header { padding: 16px; }
+  .card-label { font-size: 1.05rem; }
+  #controls { padding: 12px; gap: 12px; }
+}
+
+/* ── Wide screen ── */
+@media (min-width: 768px) {
+  #controls {
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  #camera-wrap img { max-height: 50vh; object-fit: cover; }
+}
