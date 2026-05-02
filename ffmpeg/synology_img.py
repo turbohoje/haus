@@ -277,8 +277,12 @@ def cycle_cached_image():
         print("No pickled image queue found in cache.")
         return
     if os.path.exists(pickle_path):
-        with open(pickle_path, "rb") as pf:
-            pickled_data = pickle.load(pf)
+        try:
+            with open(pickle_path, "rb") as pf:
+                pickled_data = pickle.load(pf)
+        except (EOFError, pickle.UnpicklingError):
+            print("Pickle file is empty or corrupted. Run with --download to rebuild.")
+            return
         images = pickled_data.get("images", [])
         index = pickled_data.get("index", 0)
         if images:

@@ -55,7 +55,7 @@ If `IMAGE_PATH` doesn't exist the file watcher is skipped and a placeholder imag
 
 ### Big Ass Fan — Haiku (10.22.14.20)
 - Protocol: i6 / protobuf (firmware 3.0+); library: `aiobafi6`
-- **UI label:** MaFan (fan) / MaLight (light) — shown as a single paired card
+- **UI label:** M.Fan (fan) / M.Light (light) — shown as a single paired card
 - Fan + light toggles share one card row; sliders expand full card width below
 
 #### aiobafi6 API (v0.9.0) — IMPORTANT
@@ -163,8 +163,8 @@ Cards use a dark surface with rounded corners. There are two card patterns:
 ```
 
 ### Current card order (top to bottom)
-1. **MaFan / MaLight** — paired card, fan speed + brightness sliders
-2. **Lght W / Lght E** — paired card, no sliders
+1. **M.Fan / M.Light** — paired card, fan speed + brightness sliders
+2. **Lght E / Lght W** — paired card, no sliders (E on left, W on right)
 3. **Attic1 / Attic2** — paired card, no sliders
 4. **Water Feature** — single card, auto-off countdown timer
 
@@ -172,7 +172,8 @@ Cards use a dark surface with rounded corners. There are two card patterns:
 
 ## PWA / Service Worker
 - Cache key is `"haus-vN"` in `sw.js` — **bump N whenever any static file changes** so phones receive the updated files
-- Current version: `haus-v7`
+- Current version: `haus-v10`
+- Keep the version label in `index.html` (`#app-version`) in sync with the cache key — it's shown in the top bar so you can verify which build a phone is running.
 - Network-first strategy for app shell (always fetches from server when online, falls back to cache)
 - Never caches `/image`, `/api/*`, or `/ws`
 - `skipWaiting()` + `clients.claim()` means new SW activates immediately on install
@@ -209,7 +210,7 @@ POST /api/vera/{device_key}/power   { "on": true|false }
 POST /api/wemo/{device_name}/power  { "on": true|false }
 ```
 
-Device state is cached in-memory on the server; re-polled from hardware every 60 seconds. Page loads receive cached state — no per-load hardware poll.
+Device state is cached in-memory on the server; re-polled from hardware every 60 seconds. On WebSocket connect (i.e. app load) Vera state is refreshed from hardware if the cache is older than 3 seconds — this catches switches flipped externally. Other device types still serve cached state on connect.
 
 ---
 
@@ -243,4 +244,4 @@ hausphone/
 - Desktop dashboard verbose layout
 - Additional Vera devices, TVs, thermostats
 - Auto/whoosh fan modes
-- Re-poll devices on WebSocket connect (currently serves cached state)
+- Re-poll fan/wemo on WebSocket connect (Vera is already re-polled; fan is push-based via aiobafi6, wemo less critical)

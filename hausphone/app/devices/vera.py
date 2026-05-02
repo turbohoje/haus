@@ -1,5 +1,6 @@
 """Vera Z-Wave hub — HTTP REST wrapper."""
 import logging
+import time
 import httpx
 
 log = logging.getLogger(__name__)
@@ -15,9 +16,11 @@ DEVICES = {
 }
 
 _state: dict = {k: None for k in DEVICES}
+_last_refresh: float = 0.0
 
 
 async def refresh_state() -> dict:
+    global _last_refresh
     async with httpx.AsyncClient(timeout=5.0) as client:
         for key, dev in DEVICES.items():
             try:
@@ -31,7 +34,14 @@ async def refresh_state() -> dict:
                 _state[key] = val == "1"
             except Exception as e:
                 log.warning("Vera state error for %s: %s", key, e)
+    _last_refresh = time.monotonic()
     return dict(_state)
+
+
+async def refresh_if_stale(max_age: float = 3.0) -> dict:
+    if time.monotonic() - _last_refresh > max_age:
+        return await refresh_state()
+    return get_state()
 
 
 def get_state() -> dict:

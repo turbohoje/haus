@@ -25,6 +25,26 @@ html, body {
   overflow-x: hidden;
 }
 
+/* ── Top bar (clears iOS notch / Dynamic Island) ── */
+#top-bar {
+  /* At least 20px; extends under the notch on iPhones via safe-area inset */
+  height: calc(20px + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+  padding-left:  max(12px, env(safe-area-inset-left, 0px));
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+#app-version {
+  color: #fff;
+  font-size: 0.7rem;
+  opacity: 0.7;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Camera image ── */
 #camera-wrap {
   width: 100%;

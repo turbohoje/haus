@@ -53,7 +53,13 @@ async def websocket_endpoint(ws: WebSocket):
     _ws_clients.add(ws)
     log.info("WS client connected (total: %d)", len(_ws_clients))
     try:
-        # Send full state immediately on connect
+        # Sanity check: refresh device state on app load so externally-flipped
+        # switches show their true state, not the cached value from the last poll.
+        # Rate-limited inside refresh_if_stale to protect the hub from rapid reconnects.
+        try:
+            await vera.refresh_if_stale()
+        except Exception as e:
+            log.warning("WS connect refresh error: %s", e)
         await ws.send_text(json.dumps({"type": "state", "data": _collect_state()}))
         while True:
             await ws.receive_text()  # keep alive; ignore client messages for now
