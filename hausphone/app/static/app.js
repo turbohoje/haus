@@ -214,6 +214,48 @@ bindVera("light_east", "vera-east-toggle");
 bindVera("attic1", "vera-attic1-toggle");
 bindVera("attic2", "vera-attic2-toggle");
 
+// ── Garage door (slide to activate) ───────────────────────────────────────
+const garageSlide = document.getElementById("garage-slide");
+const garageWrap  = garageSlide?.parentElement;
+const ARM_THRESHOLD = 90;
+let garageFiring = false;
+
+function resetGarageSlide() {
+  if (!garageSlide) return;
+  garageSlide.value = 0;
+  garageWrap.classList.remove("armed");
+}
+
+garageSlide?.addEventListener("input", () => {
+  const v = parseInt(garageSlide.value);
+  garageWrap.classList.toggle("armed", v >= ARM_THRESHOLD);
+});
+
+async function fireGarage() {
+  if (garageFiring) return;
+  garageFiring = true;
+  const on = !state.vera.garage;
+  try {
+    mergeState({ vera: await post("/api/vera/garage/power", { on }) });
+    renderAll();
+  } catch (e) {
+    console.error(e);
+  } finally {
+    garageFiring = false;
+    resetGarageSlide();
+  }
+}
+
+// `change` fires on release for range inputs across desktop and mobile;
+// covers the case where the user lets go and the value sticks at >=90.
+garageSlide?.addEventListener("change", () => {
+  if (parseInt(garageSlide.value) >= ARM_THRESHOLD) {
+    fireGarage();
+  } else {
+    resetGarageSlide();
+  }
+});
+
 // ── WeMo ──────────────────────────────────────────────────────────────────
 function bindWemo(deviceName, btnId, badgeId) {
   const btn   = document.getElementById(btnId);
@@ -267,6 +309,12 @@ function renderAll() {
   setDot(document.getElementById("vera-east-dot"), v.light_east);
   setDot(document.getElementById("vera-attic1-dot"), v.attic1);
   setDot(document.getElementById("vera-attic2-dot"), v.attic2);
+  setDot(document.getElementById("vera-garage-dot"), v.garage);
+  const garageStateEl = document.getElementById("vera-garage-state");
+  if (garageStateEl) {
+    garageStateEl.textContent = v.garage ? "OPEN" : "CLOSED";
+    garageStateEl.classList.toggle("on", !!v.garage);
+  }
 
   const wf = state.wemo.water_feature;
   setToggle(document.getElementById("wemo-water-toggle"), wf?.on);

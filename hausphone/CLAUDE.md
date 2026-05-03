@@ -95,6 +95,7 @@ device.light_brightness_percent = 75
 | `light_east` | 40 | Lght E |
 | `attic1` | 67 | Attic1 |
 | `attic2` | 68 | Attic2 |
+| `garage` | 36 | Garage (slide-to-activate) |
 
 To add a new Vera device: add an entry to `DEVICES` in `vera.py`. No other changes needed — the REST wrapper, state polling, and API endpoint handle all keys generically.
 
@@ -167,12 +168,13 @@ Cards use a dark surface with rounded corners. There are two card patterns:
 2. **Lght E / Lght W** — paired card, no sliders (E on left, W on right)
 3. **Attic1 / Attic2** — paired card, no sliders
 4. **Water Feature** — single card, auto-off countdown timer
+5. **Garage** — single card, slide-to-activate (prevents pocket-dial)
 
 ---
 
 ## PWA / Service Worker
 - Cache key is `"haus-vN"` in `sw.js` — **bump N whenever any static file changes** so phones receive the updated files
-- Current version: `haus-v10`
+- Current version: `haus-v13`
 - Keep the version label in `index.html` (`#app-version`) in sync with the cache key — it's shown in the top bar so you can verify which build a phone is running.
 - Network-first strategy for app shell (always fetches from server when online, falls back to cache)
 - Never caches `/image`, `/api/*`, or `/ws`
