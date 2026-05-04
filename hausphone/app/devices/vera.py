@@ -13,6 +13,7 @@ DEVICES = {
     "light_east": {"id": 40, "label": "Light East"},
     "attic1": {"id": 67, "label": "Attic1"},
     "attic2": {"id": 68, "label": "Attic2"},
+    "ld_floor": {"id": 192, "label": "LD Floor"},
     "garage": {"id": 36, "label": "Garage"},
 }
 

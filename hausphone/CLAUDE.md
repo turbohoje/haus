@@ -174,7 +174,7 @@ Cards use a dark surface with rounded corners. There are two card patterns:
 
 ## PWA / Service Worker
 - Cache key is `"haus-vN"` in `sw.js` — **bump N whenever any static file changes** so phones receive the updated files
-- Current version: `haus-v13`
+- Current version: `haus-v14`
 - Keep the version label in `index.html` (`#app-version`) in sync with the cache key — it's shown in the top bar so you can verify which build a phone is running.
 - Network-first strategy for app shell (always fetches from server when online, falls back to cache)
 - Never caches `/image`, `/api/*`, or `/ws`

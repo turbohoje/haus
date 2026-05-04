@@ -213,6 +213,7 @@ bindVera("light_west", "vera-west-toggle");
 bindVera("light_east", "vera-east-toggle");
 bindVera("attic1", "vera-attic1-toggle");
 bindVera("attic2", "vera-attic2-toggle");
+bindVera("ld_floor", "vera-ld-floor-toggle");
 
 // ── Garage door (slide to activate) ───────────────────────────────────────
 const garageSlide = document.getElementById("garage-slide");
@@ -305,10 +306,12 @@ function renderAll() {
   setToggle(document.getElementById("vera-east-toggle"), v.light_east);
   setToggle(document.getElementById("vera-attic1-toggle"), v.attic1);
   setToggle(document.getElementById("vera-attic2-toggle"), v.attic2);
+  setToggle(document.getElementById("vera-ld-floor-toggle"), v.ld_floor);
   setDot(document.getElementById("vera-west-dot"), v.light_west);
   setDot(document.getElementById("vera-east-dot"), v.light_east);
   setDot(document.getElementById("vera-attic1-dot"), v.attic1);
   setDot(document.getElementById("vera-attic2-dot"), v.attic2);
+  setDot(document.getElementById("vera-ld-floor-dot"), v.ld_floor);
   setDot(document.getElementById("vera-garage-dot"), v.garage);
   const garageStateEl = document.getElementById("vera-garage-state");
   if (garageStateEl) {

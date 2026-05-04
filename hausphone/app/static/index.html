@@ -10,13 +10,13 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>Haus</title>
-  <link rel="stylesheet" href="/static/style.css?v=13">
+  <link rel="stylesheet" href="/static/style.css?v=14">
 </head>
 <body>
 
   <!-- ── Top bar (status-bar safe area + version) ── -->
   <div id="top-bar">
-    <span id="app-version">v13</span>
+    <span id="app-version">v14</span>
   </div>
 
   <!-- ── Live camera ── -->
@@ -110,6 +110,15 @@
       </div>
     </div>
 
+    <!-- LD Floor -->
+    <div class="card">
+      <div class="card-header">
+        <span class="status-dot" id="vera-ld-floor-dot"></span>
+        <span class="card-label">LD Floor</span>
+        <button class="toggle-btn" id="vera-ld-floor-toggle">OFF</button>
+      </div>
+    </div>
+
     <!-- Water Feature -->
     <div class="card">
       <div class="card-header">
@@ -147,6 +156,6 @@
     <button id="install-btn">Install</button>
   </div>
 
-  <script src="/static/app.js?v=13"></script>
+  <script src="/static/app.js?v=14"></script>
 </body>
 </html>
