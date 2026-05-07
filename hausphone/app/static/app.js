@@ -7,6 +7,93 @@ let state = { fan: {}, vera: {}, wemo: {} };
 let timerInterval = null;
 let deferredInstallPrompt = null;
 
+// ── Settings (per-device prefs in localStorage) ───────────────────────────
+const APP_VERSION = document.getElementById("app-version").textContent.trim();
+const PREFS_KEY = "haus-prefs";
+const ELEMENTS = [
+  { key: "camera",        label: "Camera" },
+  { key: "m_fan_light",   label: "M.Fan / M.Light" },
+  { key: "lights_e_w",    label: "Lght E / Lght W" },
+  { key: "attics",        label: "Attic1 / Attic2" },
+  { key: "ld_floor",      label: "LD Floor" },
+  { key: "water_feature", label: "Water Feature" },
+  { key: "l_fire",        label: "Living Fire" },
+  { key: "m_fire",        label: "Master Fire" },
+  { key: "garage",        label: "Garage" },
+];
+
+function defaultPrefs() {
+  const elements = {};
+  for (const el of ELEMENTS) elements[el.key] = true;
+  return { version: APP_VERSION, elements };
+}
+
+function loadPrefs() {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) return defaultPrefs();
+    const parsed = JSON.parse(raw);
+    // Abandon prefs on version change — breaking changes are not migrated yet.
+    if (parsed.version !== APP_VERSION) return defaultPrefs();
+    // Backfill any new elements added after prefs were saved.
+    for (const el of ELEMENTS) {
+      if (!(el.key in parsed.elements)) parsed.elements[el.key] = true;
+    }
+    return parsed;
+  } catch {
+    return defaultPrefs();
+  }
+}
+
+function savePrefs(p) {
+  localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+}
+
+function applyPrefs(p) {
+  for (const el of ELEMENTS) {
+    const node = document.querySelector(`[data-element="${el.key}"]`);
+    if (!node) continue;
+    node.style.display = p.elements[el.key] ? "" : "none";
+  }
+}
+
+function renderSettings(p) {
+  const list = document.getElementById("settings-list");
+  list.innerHTML = "";
+  for (const el of ELEMENTS) {
+    const row = document.createElement("div");
+    row.className = "settings-row";
+    const checked = p.elements[el.key] ? "checked" : "";
+    row.innerHTML = `
+      <span class="settings-label"></span>
+      <label class="settings-switch">
+        <input type="checkbox" data-pref-key="${el.key}" ${checked}>
+        <span class="settings-switch-slider"></span>
+      </label>`;
+    row.querySelector(".settings-label").textContent = el.label;
+    list.appendChild(row);
+  }
+  list.querySelectorAll('input[type="checkbox"]').forEach(input => {
+    input.addEventListener("change", () => {
+      p.elements[input.dataset.prefKey] = input.checked;
+      savePrefs(p);
+      applyPrefs(p);
+    });
+  });
+}
+
+const _prefs = loadPrefs();
+savePrefs(_prefs);  // ensures version stamp is current
+applyPrefs(_prefs);
+renderSettings(_prefs);
+
+document.getElementById("settings-gear")?.addEventListener("click", () => {
+  document.getElementById("settings-overlay").classList.add("visible");
+});
+document.getElementById("settings-close")?.addEventListener("click", () => {
+  document.getElementById("settings-overlay").classList.remove("visible");
+});
+
 // ── DOM refs ──────────────────────────────────────────────────────────────
 const img          = document.getElementById("live-image");
 const offlineBanner = document.getElementById("offline-banner");
@@ -105,7 +192,11 @@ function connectWS() {
 // ── State management ──────────────────────────────────────────────────────
 function mergeState(data) {
   if (data.fan)  Object.assign(state.fan,  data.fan);
-  if (data.vera) Object.assign(state.vera, data.vera);
+  if (data.vera) {
+    for (const [k, v] of Object.entries(data.vera)) {
+      state.vera[k] = Object.assign(state.vera[k] || {}, v);
+    }
+  }
   if (data.wemo) {
     for (const [k, v] of Object.entries(data.wemo)) {
       state.wemo[k] = Object.assign(state.wemo[k] || {}, v);
@@ -202,7 +293,7 @@ fanBrightSlider?.addEventListener("input", () => {
 function bindVera(deviceKey, btnId) {
   const btn = document.getElementById(btnId);
   btn?.addEventListener("click", async () => {
-    const on = !state.vera[deviceKey];
+    const on = !state.vera[deviceKey]?.on;
     btn.disabled = true;
     try { mergeState({ vera: await post(`/api/vera/${deviceKey}/power`, { on }) }); renderAll(); }
     catch(e) { console.error(e); }
@@ -214,6 +305,8 @@ bindVera("light_east", "vera-east-toggle");
 bindVera("attic1", "vera-attic1-toggle");
 bindVera("attic2", "vera-attic2-toggle");
 bindVera("ld_floor", "vera-ld-floor-toggle");
+bindVera("l_fire", "vera-l-fire-toggle");
+bindVera("m_fire", "vera-m-fire-toggle");
 
 // ── Garage door (slide to activate) ───────────────────────────────────────
 const garageSlide = document.getElementById("garage-slide");
@@ -235,7 +328,7 @@ garageSlide?.addEventListener("input", () => {
 async function fireGarage() {
   if (garageFiring) return;
   garageFiring = true;
-  const on = !state.vera.garage;
+  const on = !state.vera.garage?.on;
   try {
     mergeState({ vera: await post("/api/vera/garage/power", { on }) });
     renderAll();
@@ -272,22 +365,28 @@ function bindWemo(deviceName, btnId, badgeId) {
 bindWemo("water_feature", "wemo-water-toggle", "wemo-water-timer");
 
 // ── Timer countdown display ───────────────────────────────────────────────
+function renderTimerBadge(badgeId, rem) {
+  const badge = document.getElementById(badgeId);
+  if (!badge) return;
+  if (rem != null && rem > 0) {
+    const h = Math.floor(rem / 3600);
+    const m = Math.floor((rem % 3600) / 60);
+    const s = rem % 60;
+    badge.textContent = h > 0
+      ? `auto-off ${h}h ${m}m`
+      : `auto-off ${m}m ${s.toString().padStart(2,"0")}s`;
+    badge.classList.add("visible");
+  } else {
+    badge.classList.remove("visible");
+  }
+}
+
 function updateTimers() {
   for (const [name, dev] of Object.entries(state.wemo)) {
-    const badge = document.getElementById(`wemo-${name.replace(/_/g, "-")}-timer`);
-    if (!badge) continue;
-    const rem = dev.timer_remaining;
-    if (rem != null && rem > 0) {
-      const h = Math.floor(rem / 3600);
-      const m = Math.floor((rem % 3600) / 60);
-      const s = rem % 60;
-      badge.textContent = h > 0
-        ? `auto-off ${h}h ${m}m`
-        : `auto-off ${m}m ${s.toString().padStart(2,"0")}s`;
-      badge.classList.add("visible");
-    } else {
-      badge.classList.remove("visible");
-    }
+    renderTimerBadge(`wemo-${name.replace(/_/g, "-")}-timer`, dev?.timer_remaining);
+  }
+  for (const [name, dev] of Object.entries(state.vera)) {
+    renderTimerBadge(`vera-${name.replace(/_/g, "-")}-timer`, dev?.timer_remaining);
   }
 }
 
@@ -302,21 +401,25 @@ function renderAll() {
   setSlider(fanBrightSlider, fanBrightVal, f.light_brightness);
 
   const v = state.vera;
-  setToggle(document.getElementById("vera-west-toggle"), v.light_west);
-  setToggle(document.getElementById("vera-east-toggle"), v.light_east);
-  setToggle(document.getElementById("vera-attic1-toggle"), v.attic1);
-  setToggle(document.getElementById("vera-attic2-toggle"), v.attic2);
-  setToggle(document.getElementById("vera-ld-floor-toggle"), v.ld_floor);
-  setDot(document.getElementById("vera-west-dot"), v.light_west);
-  setDot(document.getElementById("vera-east-dot"), v.light_east);
-  setDot(document.getElementById("vera-attic1-dot"), v.attic1);
-  setDot(document.getElementById("vera-attic2-dot"), v.attic2);
-  setDot(document.getElementById("vera-ld-floor-dot"), v.ld_floor);
-  setDot(document.getElementById("vera-garage-dot"), v.garage);
+  setToggle(document.getElementById("vera-west-toggle"), v.light_west?.on);
+  setToggle(document.getElementById("vera-east-toggle"), v.light_east?.on);
+  setToggle(document.getElementById("vera-attic1-toggle"), v.attic1?.on);
+  setToggle(document.getElementById("vera-attic2-toggle"), v.attic2?.on);
+  setToggle(document.getElementById("vera-ld-floor-toggle"), v.ld_floor?.on);
+  setToggle(document.getElementById("vera-l-fire-toggle"), v.l_fire?.on);
+  setToggle(document.getElementById("vera-m-fire-toggle"), v.m_fire?.on);
+  setDot(document.getElementById("vera-west-dot"), v.light_west?.on);
+  setDot(document.getElementById("vera-east-dot"), v.light_east?.on);
+  setDot(document.getElementById("vera-attic1-dot"), v.attic1?.on);
+  setDot(document.getElementById("vera-attic2-dot"), v.attic2?.on);
+  setDot(document.getElementById("vera-ld-floor-dot"), v.ld_floor?.on);
+  setDot(document.getElementById("vera-l-fire-dot"), v.l_fire?.on);
+  setDot(document.getElementById("vera-m-fire-dot"), v.m_fire?.on);
+  setDot(document.getElementById("vera-garage-dot"), v.garage?.on);
   const garageStateEl = document.getElementById("vera-garage-state");
   if (garageStateEl) {
-    garageStateEl.textContent = v.garage ? "OPEN" : "CLOSED";
-    garageStateEl.classList.toggle("on", !!v.garage);
+    garageStateEl.textContent = v.garage?.on ? "OPEN" : "CLOSED";
+    garageStateEl.classList.toggle("on", !!v.garage?.on);
   }
 
   const wf = state.wemo.water_feature;
@@ -337,8 +440,13 @@ function renderAll() {
 
   // Timer display refreshes every second
   setInterval(() => {
-    for (const [name, dev] of Object.entries(state.wemo)) {
-      if (dev.timer_remaining != null && dev.timer_remaining > 0) {
+    for (const dev of Object.values(state.wemo)) {
+      if (dev?.timer_remaining != null && dev.timer_remaining > 0) {
+        dev.timer_remaining = Math.max(0, dev.timer_remaining - 1);
+      }
+    }
+    for (const dev of Object.values(state.vera)) {
+      if (dev?.timer_remaining != null && dev.timer_remaining > 0) {
         dev.timer_remaining = Math.max(0, dev.timer_remaining - 1);
       }
     }

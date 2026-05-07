@@ -1,5 +1,5 @@
-const CACHE = "haus-v14";
-const SHELL = ["/", "/static/style.css?v=13", "/static/app.js?v=13", "/manifest.json", "/static/placeholder.jpg"];
+const CACHE = "haus-v16";
+const SHELL = ["/", "/static/style.css?v=16", "/static/app.js?v=16", "/manifest.json", "/static/placeholder.jpg"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));

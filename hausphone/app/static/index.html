@@ -10,17 +10,18 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>Haus</title>
-  <link rel="stylesheet" href="/static/style.css?v=14">
+  <link rel="stylesheet" href="/static/style.css?v=16">
 </head>
 <body>
 
   <!-- ── Top bar (status-bar safe area + version) ── -->
   <div id="top-bar">
-    <span id="app-version">v14</span>
+    <button id="settings-gear" aria-label="Settings">&#9881;</button>
+    <span id="app-version">v16</span>
   </div>
 
   <!-- ── Live camera ── -->
-  <div id="camera-wrap">
+  <div id="camera-wrap" data-element="camera">
     <img id="live-image" src="/image" alt="camera">
     <div id="offline-banner">
       <span>Not on home network.</span>
@@ -32,7 +33,7 @@
   <div id="controls">
 
     <!-- Bedroom Fan + Light -->
-    <div class="card">
+    <div class="card" data-element="m_fan_light">
       <div class="card-pair">
         <div class="card-half">
           <div class="card-header">
@@ -69,7 +70,7 @@
     </div>
 
     <!-- Lght E + Lght W -->
-    <div class="card">
+    <div class="card" data-element="lights_e_w">
       <div class="card-pair">
         <div class="card-half">
           <div class="card-header">
@@ -90,7 +91,7 @@
     </div>
 
     <!-- Attic1 + Attic2 -->
-    <div class="card">
+    <div class="card" data-element="attics">
       <div class="card-pair">
         <div class="card-half">
           <div class="card-header">
@@ -111,7 +112,7 @@
     </div>
 
     <!-- LD Floor -->
-    <div class="card">
+    <div class="card" data-element="ld_floor">
       <div class="card-header">
         <span class="status-dot" id="vera-ld-floor-dot"></span>
         <span class="card-label">LD Floor</span>
@@ -120,7 +121,7 @@
     </div>
 
     <!-- Water Feature -->
-    <div class="card">
+    <div class="card" data-element="water_feature">
       <div class="card-header">
         <span class="status-dot" id="wemo-water-dot"></span>
         <span class="card-label">Water Feature</span>
@@ -129,8 +130,28 @@
       </div>
     </div>
 
+    <!-- Living Fire (auto-off 90m) -->
+    <div class="card" data-element="l_fire">
+      <div class="card-header">
+        <span class="status-dot" id="vera-l-fire-dot"></span>
+        <span class="card-label">Living Fire</span>
+        <span class="timer-badge" id="vera-l-fire-timer"></span>
+        <button class="toggle-btn" id="vera-l-fire-toggle">OFF</button>
+      </div>
+    </div>
+
+    <!-- Master Fire (auto-off 90m) -->
+    <div class="card" data-element="m_fire">
+      <div class="card-header">
+        <span class="status-dot" id="vera-m-fire-dot"></span>
+        <span class="card-label">Master Fire</span>
+        <span class="timer-badge" id="vera-m-fire-timer"></span>
+        <button class="toggle-btn" id="vera-m-fire-toggle">OFF</button>
+      </div>
+    </div>
+
     <!-- Garage Door (slide to activate) -->
-    <div class="card">
+    <div class="card" data-element="garage">
       <div class="card-header">
         <span class="status-dot" id="vera-garage-dot"></span>
         <span class="card-label">Garage</span>
@@ -156,6 +177,15 @@
     <button id="install-btn">Install</button>
   </div>
 
-  <script src="/static/app.js?v=14"></script>
+  <!-- ── Settings overlay ── -->
+  <div id="settings-overlay">
+    <div id="settings-header">
+      <span id="settings-title">Settings</span>
+      <button id="settings-close" aria-label="Close">&#x2715;</button>
+    </div>
+    <div id="settings-list"></div>
+  </div>
+
+  <script src="/static/app.js?v=16"></script>
 </body>
 </html>
