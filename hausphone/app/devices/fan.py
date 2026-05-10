@@ -67,10 +67,12 @@ async def set_fan_speed(percent: int) -> dict:
     if _device is None:
         raise RuntimeError("Fan not connected")
     from aiobafi6 import OffOnAuto
+    # Haiku has 7 discrete speed levels; speed_percent is read-only.
     pct = max(0, min(100, percent))
-    _device.speed_percent = pct
-    _state["fan_speed"] = pct
-    if pct > 0:
+    speed = round(pct * 7 / 100)
+    _device.speed = speed
+    _state["fan_speed"] = round(speed * 100 / 7)
+    if speed > 0:
         _device.fan_mode = OffOnAuto.ON
         _state["fan_on"] = True
     return get_state()

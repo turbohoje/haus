@@ -71,13 +71,13 @@ await asyncio.wait_for(device.async_wait_available(), timeout=10)
 
 # Read state
 fan_on     = device.fan_mode == OffOnAuto.ON          # fan_mode is OffOnAuto enum (OFF/ON/AUTO)
-fan_speed  = device.speed_percent                     # 0–100
+fan_speed  = device.speed_percent                     # 0–100 (READ-ONLY)
 light_on   = device.light_mode == OffOnAuto.ON
 brightness = device.light_brightness_percent          # 0–100
 
 # Write state (synchronous property assignment — sends to device immediately)
 device.fan_mode = OffOnAuto.ON
-device.speed_percent = 50
+device.speed = 4                # 0–7 discrete (speed_percent is read-only — map pct→0-7)
 device.light_mode = OffOnAuto.OFF
 device.light_brightness_percent = 75
 ```
