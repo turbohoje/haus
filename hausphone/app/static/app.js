@@ -3,7 +3,7 @@
 const SERVER = `${location.protocol}//${location.host}`;
 let ws = null;
 let wsRetryMs = 1000;
-let state = { fan: {}, vera: {}, wemo: {} };
+let state = { fan: {}, vera: {}, wemo: {}, attic_timers: null };
 let timerInterval = null;
 let deferredInstallPrompt = null;
 
@@ -202,6 +202,9 @@ function mergeState(data) {
       state.wemo[k] = Object.assign(state.wemo[k] || {}, v);
     }
   }
+  if (data.attic_timers) {
+    state.attic_timers = data.attic_timers;
+  }
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────
@@ -390,6 +393,149 @@ function updateTimers() {
   }
 }
 
+// ── Attic timers (delay-on + off-timer) ───────────────────────────────────
+const atticExpand = document.getElementById("attic-expand");
+const atticDetail = document.getElementById("attic-detail");
+const atticDelayOnAttic1 = document.getElementById("attic-delay-on-attic1");
+const atticDelayOnAttic2 = document.getElementById("attic-delay-on-attic2");
+const atticDelayOnSlider = document.getElementById("attic-delay-on-slider");
+const atticDelayOnVal = document.getElementById("attic-delay-on-val");
+const atticDelayOnRemaining = document.getElementById("attic-delay-on-remaining");
+const atticOffTimerEnable = document.getElementById("attic-off-timer-enable");
+const atticOffTimerSlider = document.getElementById("attic-off-timer-slider");
+const atticOffTimerVal = document.getElementById("attic-off-timer-val");
+const atticOffTimerRemaining = document.getElementById("attic-off-timer-remaining");
+
+atticExpand?.addEventListener("click", () => {
+  atticDetail.classList.toggle("open");
+  atticExpand.classList.toggle("open");
+});
+
+function formatMinutes(min) {
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+function formatRemaining(sec) {
+  if (sec == null) return "";
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  return h > 0
+    ? `${h}h ${m}m ${s.toString().padStart(2,"0")}s`
+    : `${m}m ${s.toString().padStart(2,"0")}s`;
+}
+
+function readDelayOnFans() {
+  const fans = [];
+  if (atticDelayOnAttic1.checked) fans.push("attic1");
+  if (atticDelayOnAttic2.checked) fans.push("attic2");
+  return fans;
+}
+
+async function postAtticDelayOn(armed, fans, durationSeconds) {
+  try {
+    const r = await post("/api/attic/delay-on", {
+      armed, fans, duration_seconds: durationSeconds,
+    });
+    state.attic_timers = Object.assign(state.attic_timers || {}, r);
+    renderAtticTimers();
+  } catch (e) { console.error(e); }
+}
+
+async function postAtticOffTimer(armed, durationSeconds) {
+  try {
+    const r = await post("/api/attic/off-timer", {
+      armed, duration_seconds: durationSeconds,
+    });
+    state.attic_timers = Object.assign(state.attic_timers || {}, r);
+    renderAtticTimers();
+  } catch (e) { console.error(e); }
+}
+
+atticDelayOnSlider?.addEventListener("input", () => {
+  atticDelayOnVal.textContent = formatMinutes(parseInt(atticDelayOnSlider.value));
+});
+atticDelayOnSlider?.addEventListener("change", () => {
+  const fans = readDelayOnFans();
+  if (fans.length === 0) return;  // nothing selected; ignore
+  const seconds = parseInt(atticDelayOnSlider.value) * 60;
+  postAtticDelayOn(true, fans, seconds);
+});
+
+function onDelayOnFansChanged() {
+  const fans = readDelayOnFans();
+  const armed = state.attic_timers?.delay_on?.armed;
+  if (fans.length === 0) {
+    if (armed) postAtticDelayOn(false, [], 0);
+    return;
+  }
+  if (armed) {
+    // Re-arm with current slider duration; fresh countdown.
+    const seconds = parseInt(atticDelayOnSlider.value) * 60;
+    postAtticDelayOn(true, fans, seconds);
+  }
+  // Otherwise: not armed yet — wait for slider release.
+}
+atticDelayOnAttic1?.addEventListener("change", onDelayOnFansChanged);
+atticDelayOnAttic2?.addEventListener("change", onDelayOnFansChanged);
+
+atticOffTimerSlider?.addEventListener("input", () => {
+  atticOffTimerVal.textContent = formatMinutes(parseInt(atticOffTimerSlider.value));
+});
+atticOffTimerSlider?.addEventListener("change", () => {
+  if (!atticOffTimerEnable.checked) return;
+  const seconds = parseInt(atticOffTimerSlider.value) * 60;
+  postAtticOffTimer(true, seconds);
+});
+atticOffTimerEnable?.addEventListener("change", () => {
+  if (atticOffTimerEnable.checked) {
+    const seconds = parseInt(atticOffTimerSlider.value) * 60;
+    postAtticOffTimer(true, seconds);
+  } else {
+    postAtticOffTimer(false, 0);
+  }
+});
+
+function renderAtticTimers() {
+  const t = state.attic_timers;
+  if (!t) return;
+
+  const d = t.delay_on;
+  if (d) {
+    if (d.armed) {
+      atticDelayOnAttic1.checked = d.fans.includes("attic1");
+      atticDelayOnAttic2.checked = d.fans.includes("attic2");
+      const min = Math.max(1, Math.round((d.duration_seconds || 0) / 60));
+      atticDelayOnSlider.value = min;
+      atticDelayOnVal.textContent = formatMinutes(min);
+    } else if (state._delayOnPrevArmed) {
+      // Timer just fired (or got disarmed remotely): clear the per-fan UI so
+      // stale checkmarks don't linger. We do NOT clobber checkboxes during
+      // pre-arm config (when prev was already false).
+      atticDelayOnAttic1.checked = false;
+      atticDelayOnAttic2.checked = false;
+    }
+    atticDelayOnRemaining.textContent = d.armed ? formatRemaining(d.remaining) : "";
+    state._delayOnPrevArmed = d.armed;
+  }
+
+  const o = t.off_timer;
+  if (o) {
+    if (o.armed) {
+      atticOffTimerEnable.checked = true;
+      const min = Math.max(1, Math.round((o.duration_seconds || 0) / 60));
+      atticOffTimerSlider.value = min;
+      atticOffTimerVal.textContent = formatMinutes(min);
+    } else {
+      atticOffTimerEnable.checked = false;
+    }
+    atticOffTimerRemaining.textContent = o.armed ? formatRemaining(o.remaining) : "";
+  }
+}
+
 // ── Render all ────────────────────────────────────────────────────────────
 function renderAll() {
   const f = state.fan;
@@ -426,6 +572,7 @@ function renderAll() {
   setToggle(document.getElementById("wemo-water-toggle"), wf?.on);
   setDot(document.getElementById("wemo-water-dot"), wf?.on);
   updateTimers();
+  renderAtticTimers();
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
@@ -450,6 +597,14 @@ function renderAll() {
         dev.timer_remaining = Math.max(0, dev.timer_remaining - 1);
       }
     }
+    const at = state.attic_timers;
+    if (at?.delay_on?.armed && at.delay_on.remaining > 0) {
+      at.delay_on.remaining = Math.max(0, at.delay_on.remaining - 1);
+    }
+    if (at?.off_timer?.armed && at.off_timer.remaining > 0) {
+      at.off_timer.remaining = Math.max(0, at.off_timer.remaining - 1);
+    }
     updateTimers();
+    renderAtticTimers();
   }, 1000);
 })();

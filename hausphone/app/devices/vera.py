@@ -25,6 +25,20 @@ _timer_end: dict = {k: None for k in DEVICES}
 _timers: dict = {}  # device_key -> asyncio.Task
 _last_refresh: float = 0.0
 
+# ── Attic shared timers ──────────────────────────────────────────────────
+ATTIC_FANS = ("attic1", "attic2")
+_attic_delay_on = {"armed": False, "fans": [], "duration_seconds": 0, "expires_at": None}
+_attic_off_timer = {"armed": False, "duration_seconds": 0, "expires_at": None}
+_attic_delay_on_task = None
+_attic_off_timer_task = None
+_broadcast_cb = None
+
+
+def register_broadcast(cb):
+    """main.py registers an async callback so timer-fire events can push state."""
+    global _broadcast_cb
+    _broadcast_cb = cb
+
 
 def _build_state() -> dict:
     now = time.time()
@@ -117,3 +131,134 @@ def _schedule_auto_off(device_key: str, delay_seconds: float):
 
     task = asyncio.create_task(_auto_off())
     _timers[device_key] = task
+
+
+# ── Attic shared timers ──────────────────────────────────────────────────
+def _attic_delay_on_payload() -> dict:
+    s = _attic_delay_on
+    remaining = None
+    if s["armed"] and s["expires_at"] is not None:
+        remaining = max(0, int(s["expires_at"] - time.time()))
+    return {
+        "armed": s["armed"],
+        "fans": list(s["fans"]),
+        "duration_seconds": s["duration_seconds"],
+        "remaining": remaining,
+    }
+
+
+def _attic_off_timer_payload() -> dict:
+    s = _attic_off_timer
+    remaining = None
+    if s["armed"] and s["expires_at"] is not None:
+        remaining = max(0, int(s["expires_at"] - time.time()))
+    return {
+        "armed": s["armed"],
+        "duration_seconds": s["duration_seconds"],
+        "remaining": remaining,
+    }
+
+
+def get_attic_timers() -> dict:
+    return {
+        "delay_on": _attic_delay_on_payload(),
+        "off_timer": _attic_off_timer_payload(),
+    }
+
+
+async def _broadcast_attic_state():
+    if _broadcast_cb is None:
+        return
+    try:
+        await _broadcast_cb({"vera": get_state(), "attic_timers": get_attic_timers()})
+    except Exception as e:
+        log.warning("Attic broadcast error: %s", e)
+
+
+async def set_attic_delay_on(armed: bool, fans, duration_seconds: int) -> dict:
+    global _attic_delay_on_task
+    valid_fans = [f for f in (fans or []) if f in ATTIC_FANS]
+    duration_seconds = int(duration_seconds or 0)
+    if armed and (not valid_fans or duration_seconds <= 0):
+        armed = False
+
+    if _attic_delay_on_task and not _attic_delay_on_task.done():
+        _attic_delay_on_task.cancel()
+    _attic_delay_on_task = None
+
+    if armed:
+        _attic_delay_on.update({
+            "armed": True,
+            "fans": valid_fans,
+            "duration_seconds": duration_seconds,
+            "expires_at": time.time() + duration_seconds,
+        })
+        _attic_delay_on_task = asyncio.create_task(_attic_delay_on_runner(duration_seconds))
+    else:
+        _attic_delay_on.update({
+            "armed": False, "fans": [], "duration_seconds": 0, "expires_at": None,
+        })
+
+    return get_attic_timers()
+
+
+async def _attic_delay_on_runner(delay_seconds: float):
+    try:
+        await asyncio.sleep(delay_seconds)
+    except asyncio.CancelledError:
+        return
+    fans = list(_attic_delay_on["fans"])
+    log.info("Attic delay-on timer fired for %s", fans)
+    try:
+        for key in fans:
+            if not _state.get(key):
+                await set_power(key, True)
+    except Exception as e:
+        log.warning("Attic delay-on action failed: %s", e)
+    _attic_delay_on.update({
+        "armed": False, "fans": [], "duration_seconds": 0, "expires_at": None,
+    })
+    await _broadcast_attic_state()
+
+
+async def set_attic_off_timer(armed: bool, duration_seconds: int) -> dict:
+    global _attic_off_timer_task
+    duration_seconds = int(duration_seconds or 0)
+    if armed and duration_seconds <= 0:
+        armed = False
+
+    if _attic_off_timer_task and not _attic_off_timer_task.done():
+        _attic_off_timer_task.cancel()
+    _attic_off_timer_task = None
+
+    if armed:
+        _attic_off_timer.update({
+            "armed": True,
+            "duration_seconds": duration_seconds,
+            "expires_at": time.time() + duration_seconds,
+        })
+        _attic_off_timer_task = asyncio.create_task(_attic_off_timer_runner(duration_seconds))
+    else:
+        _attic_off_timer.update({
+            "armed": False, "duration_seconds": 0, "expires_at": None,
+        })
+
+    return get_attic_timers()
+
+
+async def _attic_off_timer_runner(delay_seconds: float):
+    try:
+        await asyncio.sleep(delay_seconds)
+    except asyncio.CancelledError:
+        return
+    log.info("Attic off-timer fired")
+    try:
+        for key in ATTIC_FANS:
+            if _state.get(key):
+                await set_power(key, False)
+    except Exception as e:
+        log.warning("Attic off-timer action failed: %s", e)
+    _attic_off_timer.update({
+        "armed": False, "duration_seconds": 0, "expires_at": None,
+    })
+    await _broadcast_attic_state()

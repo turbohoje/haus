@@ -126,6 +126,7 @@ def _collect_state() -> dict:
     return {
         "fan": fan.get_state(),
         "vera": vera.get_state(),
+        "attic_timers": vera.get_attic_timers(),
         "wemo": wemo.get_state(),
     }
 
@@ -173,6 +174,30 @@ async def light_brightness(body: dict = Body(...)):
 async def vera_power(device_key: str, body: dict = Body(...)):
     state = await vera.set_power(device_key, bool(body.get("on")))
     await broadcast({"type": "state", "data": {"vera": state}})
+    return state
+
+
+# --------------------------------------------------------------------------
+# Attic timers (delay-on, off-timer)
+# --------------------------------------------------------------------------
+@app.post("/api/attic/delay-on")
+async def attic_delay_on(body: dict = Body(...)):
+    state = await vera.set_attic_delay_on(
+        bool(body.get("armed")),
+        body.get("fans") or [],
+        int(body.get("duration_seconds") or 0),
+    )
+    await broadcast({"type": "state", "data": {"attic_timers": state}})
+    return state
+
+
+@app.post("/api/attic/off-timer")
+async def attic_off_timer(body: dict = Body(...)):
+    state = await vera.set_attic_off_timer(
+        bool(body.get("armed")),
+        int(body.get("duration_seconds") or 0),
+    )
+    await broadcast({"type": "state", "data": {"attic_timers": state}})
     return state
 
 
@@ -246,6 +271,9 @@ async def startup():
     _loop = asyncio.get_event_loop()
 
     wemo.load_config()
+
+    # Let vera push state updates when its background timers fire
+    vera.register_broadcast(lambda data: broadcast({"type": "state", "data": data}))
 
     # Connect to fan (non-fatal if unavailable)
     try:

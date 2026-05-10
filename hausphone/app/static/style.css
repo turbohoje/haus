@@ -150,6 +150,75 @@ html, body {
 }
 .expand-btn.open { transform: rotate(180deg); }
 
+/* ── Card-level expand bar (used by Attic timers) ── */
+.card-expand-row {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 1.05rem;
+  padding: 6px 0 8px;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1;
+}
+.card-expand-row:active { background: var(--surface2); }
+.card-expand-row-icon {
+  display: inline-block;
+  transition: transform 0.2s;
+}
+.card-expand-row.open .card-expand-row-icon { transform: rotate(180deg); }
+
+/* ── Timer sections inside a card-detail ── */
+.timer-section {
+  background: var(--surface2);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.timer-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.timer-section-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+}
+.timer-fans-row {
+  display: flex;
+  gap: 18px;
+}
+.timer-fan-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.timer-fan-checkbox input[type=checkbox] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.timer-remaining {
+  font-size: 0.78rem;
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* ── Side-by-side card pair ── */
 .card-pair {
   display: flex;
