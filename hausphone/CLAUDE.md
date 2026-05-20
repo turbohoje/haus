@@ -93,8 +93,8 @@ device.light_brightness_percent = 75
 |-----|-----------|----------|
 | `light_west` | 39 | Lght W |
 | `light_east` | 40 | Lght E |
-| `attic1` | 67 | Attic1 |
-| `attic2` | 68 | Attic2 |
+| `attic1` | 68 | Attic1 (multi-channel endpoint e1 of master 67) |
+| `attic2` | 69 | Attic2 (multi-channel endpoint e2 of master 67) |
 | `garage` | 36 | Garage (slide-to-activate) |
 
 To add a new Vera device: add an entry to `DEVICES` in `vera.py`. No other changes needed — the REST wrapper, state polling, and API endpoint handle all keys generically.
@@ -174,7 +174,7 @@ Cards use a dark surface with rounded corners. There are two card patterns:
 
 ## PWA / Service Worker
 - Cache key is `"haus-vN"` in `sw.js` — **bump N whenever any static file changes** so phones receive the updated files
-- Current version: `haus-v14`
+- Current version: `haus-v20`
 - Keep the version label in `index.html` (`#app-version`) in sync with the cache key — it's shown in the top bar so you can verify which build a phone is running.
 - Network-first strategy for app shell (always fetches from server when online, falls back to cache)
 - Never caches `/image`, `/api/*`, or `/ws`
@@ -210,7 +210,12 @@ POST /api/light/power               { "on": true|false }
 POST /api/light/brightness          { "percent": 0-100 }
 POST /api/vera/{device_key}/power   { "on": true|false }
 POST /api/wemo/{device_name}/power  { "on": true|false }
+POST /api/vera/system/zwave-reset   (no body) — soft-reboot the Z-Wave chip (keeps pairings)
+POST /api/vera/system/reload-engine (no body) — reload Luup engine
+POST /api/vera/system/reboot        (no body) — reboot the entire Vera (WiFi drops)
 ```
+
+Vera system actions live in the settings overlay (gear icon), not in the main controls panel.
 
 Device state is cached in-memory on the server; re-polled from hardware every 60 seconds. On WebSocket connect (i.e. app load) Vera state is refreshed from hardware if the cache is older than 3 seconds — this catches switches flipped externally. Other device types still serve cached state on connect.
 

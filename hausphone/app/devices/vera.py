@@ -12,8 +12,8 @@ SVC = "urn:upnp-org:serviceId:SwitchPower1"
 DEVICES = {
     "light_west": {"id": 39, "label": "Light West"},
     "light_east": {"id": 40, "label": "Light East"},
-    "attic1": {"id": 67, "label": "Attic1"},
-    "attic2": {"id": 68, "label": "Attic2"},
+    "attic1": {"id": 68, "label": "Attic1"},
+    "attic2": {"id": 69, "label": "Attic2"},
     "ld_floor": {"id": 192, "label": "LD Floor"},
     "garage": {"id": 36, "label": "Garage"},
     "l_fire": {"id": 142, "label": "Living Fire", "auto_off_minutes": 90},
@@ -24,6 +24,36 @@ _state: dict = {k: None for k in DEVICES}
 _timer_end: dict = {k: None for k in DEVICES}
 _timers: dict = {}  # device_key -> asyncio.Task
 _last_refresh: float = 0.0
+
+# ── Vera system actions ──────────────────────────────────────────────────
+async def soft_reset_zwave() -> dict:
+    """Reboot the Z-Wave chip (does NOT factory-reset / lose pairings)."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        r = await client.get(VERA_BASE, params={
+            "id": "lu_action",
+            "serviceId": "urn:micasaverde-com:serviceId:ZWaveNetwork1",
+            "action": "SoftReset",
+            "DeviceNum": 1,
+        })
+    log.info("Vera Z-Wave soft reset: HTTP %s", r.status_code)
+    return {"ok": r.status_code == 200, "status": r.status_code}
+
+
+async def reload_engine() -> dict:
+    """Reload the LuaUPnP engine."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        r = await client.get(VERA_BASE, params={"id": "reload"})
+    log.info("Vera engine reload: HTTP %s", r.status_code)
+    return {"ok": r.status_code == 200, "status": r.status_code}
+
+
+async def reboot_vera() -> dict:
+    """Reboot the entire Vera unit (network + WiFi will drop)."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        r = await client.get(VERA_BASE, params={"id": "reboot"})
+    log.info("Vera reboot: HTTP %s", r.status_code)
+    return {"ok": r.status_code == 200, "status": r.status_code}
+
 
 # ── Attic shared timers ──────────────────────────────────────────────────
 ATTIC_FANS = ("attic1", "attic2")

@@ -10,14 +10,14 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>Haus</title>
-  <link rel="stylesheet" href="/static/style.css?v=18">
+  <link rel="stylesheet" href="/static/style.css?v=19">
 </head>
 <body>
 
   <!-- ── Top bar (status-bar safe area + version) ── -->
   <div id="top-bar">
     <button id="settings-gear" aria-label="Settings">&#9881;</button>
-    <span id="app-version">v18</span>
+    <span id="app-version">v20</span>
   </div>
 
   <!-- ── Live camera ── -->
@@ -223,8 +223,16 @@
       <button id="settings-close" aria-label="Close">&#x2715;</button>
     </div>
     <div id="settings-list"></div>
+    <div id="settings-vera-system">
+      <div class="settings-section-title">Vera System</div>
+      <div class="system-btn-row">
+        <button class="system-btn" id="vera-zwave-reset-btn">Z-Wave Reset</button>
+        <button class="system-btn" id="vera-reload-btn">Reload Engine</button>
+        <button class="system-btn danger" id="vera-reboot-btn">Reboot Vera</button>
+      </div>
+    </div>
   </div>
 
-  <script src="/static/app.js?v=18"></script>
+  <script src="/static/app.js?v=19"></script>
 </body>
 </html>

@@ -353,6 +353,35 @@ garageSlide?.addEventListener("change", () => {
   }
 });
 
+// ── Vera system actions (Z-Wave reset / engine reload / Vera reboot) ─────
+function bindSystemBtn(btnId, endpoint, label, postLabel) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    if (!confirm(`${label}?\n\nThis will affect the whole Vera hub.`)) return;
+    btn.disabled = true;
+    btn.classList.add("busy");
+    const prev = btn.textContent;
+    btn.textContent = "…";
+    try {
+      const r = await post(endpoint, {});
+      btn.textContent = r?.ok ? (postLabel || "Sent") : `HTTP ${r?.status || "?"}`;
+    } catch (e) {
+      console.error(e);
+      btn.textContent = "Failed";
+    } finally {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.classList.remove("busy");
+        btn.textContent = prev;
+      }, 2500);
+    }
+  });
+}
+bindSystemBtn("vera-zwave-reset-btn", "/api/vera/system/zwave-reset", "Soft-reset Z-Wave chip", "Reset sent");
+bindSystemBtn("vera-reload-btn",      "/api/vera/system/reload-engine", "Reload Luup engine",    "Reloading");
+bindSystemBtn("vera-reboot-btn",      "/api/vera/system/reboot",        "Reboot Vera (WiFi will drop)", "Rebooting");
+
 // ── WeMo ──────────────────────────────────────────────────────────────────
 function bindWemo(deviceName, btnId, badgeId) {
   const btn   = document.getElementById(btnId);

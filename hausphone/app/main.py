@@ -180,6 +180,24 @@ async def vera_power(device_key: str, body: dict = Body(...)):
 # --------------------------------------------------------------------------
 # Attic timers (delay-on, off-timer)
 # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Vera system actions (Z-Wave chip reset, engine reload, reboot)
+# --------------------------------------------------------------------------
+@app.post("/api/vera/system/zwave-reset")
+async def vera_zwave_reset():
+    return await vera.soft_reset_zwave()
+
+
+@app.post("/api/vera/system/reload-engine")
+async def vera_reload_engine():
+    return await vera.reload_engine()
+
+
+@app.post("/api/vera/system/reboot")
+async def vera_reboot():
+    return await vera.reboot_vera()
+
+
 @app.post("/api/attic/delay-on")
 async def attic_delay_on(body: dict = Body(...)):
     state = await vera.set_attic_delay_on(

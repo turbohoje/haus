@@ -485,6 +485,7 @@ html, body {
   flex-direction: column;
   gap: 10px;
   overflow-y: auto;
+  flex: 1;
 }
 
 .settings-row {
@@ -537,6 +538,41 @@ html, body {
 .settings-switch input:checked + .settings-switch-slider { background: var(--on); }
 .settings-switch input:checked + .settings-switch-slider::before { transform: translateX(22px); }
 
+/* ── Vera system buttons (Z-Wave reset / reload / reboot) ── */
+#settings-vera-system {
+  padding: 0 var(--gap) var(--gap);
+  margin-top: auto;  /* push to bottom of settings overlay */
+}
+.settings-section-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  padding: 12px 4px 8px;
+}
+.system-btn-row {
+  display: flex;
+  gap: 8px;
+}
+.system-btn {
+  flex: 1;
+  height: 48px;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--surface2);
+  color: var(--text);
+  transition: background 0.15s, opacity 0.15s;
+  letter-spacing: 0.02em;
+}
+.system-btn:active { opacity: 0.7; }
+.system-btn:disabled { opacity: 0.4; cursor: default; }
+.system-btn.danger { background: #4a2222; color: #ffb0b0; }
+.system-btn.armed { background: var(--warn); color: #111; }
+.system-btn.busy  { background: var(--accent); color: #fff; }
+
 /* ── Phone: larger touch targets ── */
 @media (max-width: 767px) {
   .toggle-btn {
@@ -548,6 +584,7 @@ html, body {
   .card-header { padding: 16px; }
   .card-label { font-size: 1.05rem; }
   #controls { padding: 12px; gap: 12px; }
+  .system-btn { height: 52px; font-size: 0.95rem; }
 }
 
 /* ── Wide screen ── */
