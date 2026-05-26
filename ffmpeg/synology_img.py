@@ -19,7 +19,7 @@ import sys
 import shutil
 import glob
 import pickle
-from PIL import Image, ExifTags
+from PIL import Image, ExifTags, ImageOps
 import time
 import pprint
 from PIL import Image
@@ -191,18 +191,57 @@ def convert_heic_to_jpg(input_path, output_path=None, quality=90):
         print(f"Error converting HEIC to JPG: {e}")
         return None
 
-def download_photo_by_id(nas_url, sid, synotoken, image_id, filename='random.jpg', download_dir=DOWNLOAD_DIR):
+def _is_synology_error_response(content_type, first_bytes):
     """
-    Downloads a Synology Photos image by ID and saves it as 'random.<ext>' in the specified directory.
+    Detect a Synology API error response masquerading as a download.
+
+    The download API returns HTTP 200 with a JSON body such as
+    {"error":{"code":117},"success":false} for items it can't serve. That JSON
+    must never be written to the cache as if it were an image.
+
+    :param content_type: value of the response Content-Type header
+    :param first_bytes: the first bytes of the response body
+    :return: True if the response looks like an API error, not image bytes
+    """
+    if content_type and "json" in content_type.lower():
+        return True
+    # Real images never start with '{'. JPEG=FFD8, PNG=89504E47, HEIF/MOV='ftyp'.
+    return first_bytes.lstrip()[:1] == b"{"
+
+
+def download_photo_by_id(nas_url, sid, synotoken, image_id, filename='random.jpg',
+                         download_dir=DOWNLOAD_DIR, fallback_unit_id=None, max_retries=3):
+    """
+    Download a Synology Photos item and store it as a guaranteed-decodable
+    baseline sRGB JPEG in ``download_dir``.
+
+    The download API (SYNO.FotoTeam.Download) addresses a *unit*, not an item.
+    For most items the item ``id`` is itself a valid download unit, but for some
+    the item ``id`` is not downloadable and returns ``{"error":{"code":117}}``;
+    those items' real image lives at ``additional.thumbnail.unit_id``. So we try
+    the item ``id`` first and fall back to ``fallback_unit_id`` on a 117. (We
+    can't just always use the thumbnail unit_id: for the normal items it points
+    at the *neighbouring* photo.)
+
+    Other robustness handled here (download side):
+      * API error responses are detected and never written to cache.
+      * Downloaded bytes are force-decoded with Pillow; anything that isn't a
+        still image (e.g. a Live-Photo/motion MOV saved with a .jpg name) is
+        skipped.
+      * Every kept image is normalized: EXIF orientation baked in, HEIF/HEIC
+        converted, re-saved as plain RGB JPEG so ffmpeg can always decode it.
 
     :param nas_url: Base NAS URL (e.g., https://192.168.1.100:5001)
     :param sid: Synology session ID
     :param synotoken: Synology token
-    :param image_id: The ID of the image to download
-    :param filename: Original filename (used to preserve extension)
+    :param image_id: The item ID (first download unit to try)
+    :param filename: Original filename (used to derive the output name)
     :param download_dir: Path to local directory to save image
-    :return: Path to saved image or None
+    :param fallback_unit_id: unit_id to retry with if image_id yields a 117 error
+    :param max_retries: Attempts per unit before giving up on transient errors
+    :return: Path to the saved JPEG, or None if the item was skipped
     """
+    pillow_heif.register_heif_opener()
 
     save_path = os.path.join(download_dir, f"{filename}")
 
@@ -220,7 +259,6 @@ def download_photo_by_id(nas_url, sid, synotoken, image_id, filename='random.jpg
         "api": "SYNO.FotoTeam.Download",
         "method": "download",
         "version": "1",
-        "unit_id": f"[{image_id}]",
         "type": "original"
     }
     headers = {
@@ -228,47 +266,82 @@ def download_photo_by_id(nas_url, sid, synotoken, image_id, filename='random.jpg
         "Cookie": f"id={sid}"
     }
 
-    try:
-        with requests.get(download_url, params=params, headers=headers, cookies={"id": sid}, verify=False, stream=True) as r:
-            r.raise_for_status()
-            with open(save_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-        print(f"Downloaded image to: {save_path}")
+    # Try the item id first, then the thumbnail unit_id (recovers code-117 items).
+    candidate_units = [image_id]
+    if fallback_unit_id is not None and fallback_unit_id != image_id:
+        candidate_units.append(fallback_unit_id)
 
-        if ".heic" in save_path.lower():
-            jpg_path = convert_heic_to_jpg(save_path)
-            if jpg_path:
-                os.remove(save_path)
-                save_path = jpg_path
+    # 1) Fetch bytes. Retry transient network errors per unit; an API error (e.g.
+    #    117 = wrong unit) is persistent, so move straight to the next candidate.
+    content = None
+    for ci, unit in enumerate(candidate_units):
+        is_last = ci == len(candidate_units) - 1
+        params["unit_id"] = f"[{unit}]"
+        for attempt in range(1, max_retries + 1):
+            try:
+                with requests.get(download_url, params=params, headers=headers,
+                                  cookies={"id": sid}, verify=VERIFY_SSL, stream=True, timeout=60) as r:
+                    r.raise_for_status()
+                    ctype = r.headers.get("Content-Type", "")
+                    body = r.content
+                if _is_synology_error_response(ctype, body[:64]):
+                    # 117 = this unit isn't downloadable. Expected for ~18% of items
+                    # whose image lives at the fallback unit_id, so only shout if the
+                    # last candidate also fails.
+                    if is_last:
+                        snippet = body[:160].decode("utf-8", "replace").strip()
+                        print(f"API error for id {image_id} (unit {unit}): {snippet}")
+                    break  # persistent; try the next candidate unit
+                content = body
+                break
+            except Exception as e:
+                print(f"[{attempt}/{max_retries}] download error for id {image_id} (unit {unit}): {e}")
+                time.sleep(1.5 * attempt)
+        if content is not None:
+            break
 
-        # Check if the image needs rotation based on EXIF orientation
-        try:
-            img = Image.open(save_path)
-            exif = img._getexif()
-            if exif is not None:
-                #pprint.pprint(exif)
-
-                orientation_key = next((k for k, v in ExifTags.TAGS.items() if v == 'Orientation'), None)
-                if orientation_key and orientation_key in exif:
-                    orientation = exif[orientation_key]
-                    if orientation == 3:
-                        img = img.rotate(180, expand=True)
-                        img.save(save_path)
-                    elif orientation == 6:
-                        img = img.rotate(270, expand=True)
-                        img.save(save_path)
-                    elif orientation == 8:
-                        img = img.rotate(90, expand=True)
-                        img.save(save_path)
-        except Exception as e:
-            print(f"Could not auto-rotate image: {e}")
-
-        return save_path
-    except Exception as e:
-        print(f"Error downloading image ID {image_id}: {e}")
+    if content is None:
+        print(f"Skipping image id {image_id}: no valid response (tried units {candidate_units})")
         return None
+
+    with open(save_path, "wb") as f:
+        f.write(content)
+
+    # 2) Force-decode. Videos / corrupt data raise here and are skipped.
+    try:
+        img = Image.open(save_path)
+        img.load()
+    except Exception as e:
+        print(f"Skipping id {image_id} ({filename}): not a usable still image ({e})")
+        try:
+            os.remove(save_path)
+        except OSError:
+            pass
+        return None
+
+    # 3) Normalize to a baseline sRGB JPEG ffmpeg can always read.
+    try:
+        img = ImageOps.exif_transpose(img)  # bake in EXIF orientation
+        img = img.convert("RGB")            # drop alpha/CMYK/palette
+    except Exception as e:
+        print(f"Skipping id {image_id} ({filename}): could not normalize ({e})")
+        try:
+            os.remove(save_path)
+        except OSError:
+            pass
+        return None
+
+    base, ext = os.path.splitext(save_path)
+    out_path = save_path if ext.lower() in (".jpg", ".jpeg") else f"{base}.jpg"
+    img.save(out_path, "JPEG", quality=90)
+    if out_path != save_path:
+        try:
+            os.remove(save_path)
+        except OSError:
+            pass
+
+    print(f"Downloaded and normalized image to: {out_path}")
+    return out_path
 
 
 def cycle_cached_image():
@@ -531,20 +604,27 @@ if __name__ == "__main__":
                     os.remove(f)
                 except Exception as e:
                     print(f"Could not remove {f}: {e}")
+            downloaded_images = []
             for img in images:
                 img_id = img.get('id')
                 #print("exif")
                 #print(get_exif_by_photo_id(NAS_URL, auth["sid"], auth["synotoken"], img_id))
                 filename = img.get('filename', f"{img_id}.jpg")
-                fn = download_photo_by_id(NAS_URL, auth["sid"], auth["synotoken"], image_id=img_id, filename=filename, download_dir=DOWNLOAD_CACHE_DIR)
+                fallback_unit_id = (img.get('additional') or {}).get('thumbnail', {}).get('unit_id')
+                fn = download_photo_by_id(NAS_URL, auth["sid"], auth["synotoken"], image_id=img_id, filename=filename, download_dir=DOWNLOAD_CACHE_DIR, fallback_unit_id=fallback_unit_id)
                 if fn is not None:
                     img["filename"] = fn
+                    downloaded_images.append(img)
+            # Queue only the images that downloaded and normalized cleanly, so every
+            # cycle lands on a real image instead of a skipped/missing slot.
+            print(f"Queued {len(downloaded_images)} of {len(images)} images "
+                  f"({len(images) - len(downloaded_images)} skipped as errors/videos/undecodable)")
             # Shuffle images list
-            random.shuffle(images)
+            random.shuffle(downloaded_images)
 
             # Prepare data to pickle: images list and index
             pickled_data = {
-                "images": images,
+                "images": downloaded_images,
                 "index": 0
             }
 
