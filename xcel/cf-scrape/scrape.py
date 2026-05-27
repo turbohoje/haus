@@ -2,15 +2,15 @@
 """
 scrape.py — Pulls xcel_meter_power_watts and xcel_meter_energy_wh from the
 xcel-exporter Prometheus endpoint and POSTs them to the cf-metrics-server Worker
-as denzel_power_watts (W) and denzel_watt_hours (Wh).
+as power_watts (W) and watt_hours (Wh).
 
 Environment variables (all required unless noted):
   METRICS_URL          URL of the Prometheus endpoint  (default: http://xcel-exporter:9101/metrics)
   WORKER_URL           Base URL of the Cloudflare Worker
   API_KEY              X-API-Key value for the Worker
-  SENSOR_ID_POWER      sensor_id to use for power demand   (default: denzel_power_watts)
-  SENSOR_ID_ENERGY     sensor_id to use for energy total   (default: denzel_watt_hours)
-  LOCATION             location label for readings         (default: house)
+  SENSOR_ID_POWER      sensor_id to use for power demand   (default: power_watts)
+  SENSOR_ID_ENERGY     sensor_id to use for energy total   (default: watt_hours)
+  LOCATION             location label for readings         (default: denzel)
   SCRAPE_INTERVAL      Seconds between scrapes in loop mode (default: 60)
   RUN_ONCE             Set to "true" to scrape once and exit (default: false)
   LOG_LEVEL            DEBUG | INFO | WARNING | ERROR  (default: INFO)
@@ -30,9 +30,9 @@ import requests
 METRICS_URL       = os.environ.get("METRICS_URL", "http://xcel-exporter:9101/metrics")
 WORKER_URL        = os.environ.get("WORKER_URL", "").rstrip("/")
 API_KEY           = os.environ.get("API_KEY", "")
-SENSOR_ID_POWER   = os.environ.get("SENSOR_ID_POWER",  "denzel_power_watts")
-SENSOR_ID_ENERGY  = os.environ.get("SENSOR_ID_ENERGY", "denzel_watt_hours")
-LOCATION          = os.environ.get("LOCATION", "house")
+SENSOR_ID_POWER   = os.environ.get("SENSOR_ID_POWER",  "power_watts")
+SENSOR_ID_ENERGY  = os.environ.get("SENSOR_ID_ENERGY", "watt_hours")
+LOCATION          = os.environ.get("LOCATION", "denzel")
 SCRAPE_INTERVAL   = int(os.environ.get("SCRAPE_INTERVAL", "60"))
 RUN_ONCE          = os.environ.get("RUN_ONCE", "false").lower() == "true"
 LOG_LEVEL         = os.environ.get("LOG_LEVEL", "INFO").upper()
