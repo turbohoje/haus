@@ -10,3 +10,16 @@ services:
       METER_IP: 10.22.14.23
       METER_PORT: 8081
       PORT: 9101
+
+  xcel-cf-scrape:
+    build: ./cf-scrape
+    image: xcel-cf-scrape:latest
+    container_name: xcel-cf-scrape
+    restart: unless-stopped
+    depends_on:
+      - xcel-exporter
+    env_file:
+      - ./cf-scrape/.env
+    environment:
+      METRICS_URL: http://xcel-exporter:9101/metrics
+      SCRAPE_INTERVAL: "60"
