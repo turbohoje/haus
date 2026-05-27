@@ -22,27 +22,28 @@ dd if=/dev/zero count=10000 bs=1024 > /dev/fb0
 #pass=ENV
 ip=10.22.14.9
 
-last_power=0   # epoch of last power-meter fetch (throttled to every 5s)
+# Background poller for live power consumption from the local Xcel meter
+# exporter. Runs independently of the (blocking) ffmpeg loop with a generous
+# timeout, and only overwrites power.txt when it gets a real reading, so a slow
+# or missed fetch leaves the last good value on screen instead of blanking it.
+power_poller() {
+  while true; do
+    watts=$(curl -s --max-time 8 http://10.22.14.2:9101/metrics 2>/dev/null \
+            | awk '/^xcel_meter_power_watts /{print $2; exit}')
+    if [ -n "$watts" ]; then
+      printf "%.0f W\n" "$watts" > "$wd/power.txt"
+    fi
+    sleep 5
+  done
+}
+power_poller &
+trap 'kill %1 2>/dev/null' EXIT
 
 while [ 1 ]; do
   sleep 0.1
   date=$(date +"%a %b%d  %H:%M:%S")
   echo "$date" > $wd/center.txt
   cat $wd/center_wx.txt >> $wd/center.txt
-
-  # live power consumption from the local Xcel meter exporter, refreshed every 5s
-  now=$(date +%s)
-  if [ $((now - last_power)) -ge 5 ]; then
-    watts=$(curl -s --max-time 2 http://10.22.14.2:9101/metrics 2>/dev/null \
-            | awk '/^xcel_meter_power_watts /{print $2; exit}')
-    if [ -n "$watts" ]; then
-      printf "%.0f W\n" "$watts" > $wd/power.txt
-    else
-      printf -- "-- W\n" > $wd/power.txt
-    fi
-    last_power=$now
-  fi
-
 
   small_dims="scale=640:360"
   testargs="[0:v]scale=1280:1080:force_original_aspect_ratio=increase,crop=1280:1080:(in_w-1280)/2:(in_h-1080)/2[bg];[1:v]$small_dims[1];[2:v]crop=2520:1380:1326:100,$small_dims[2];[3:v]$small_dims[3];[1][2][3]vstack=inputs=3[stk];[stk][bg]hstack"
