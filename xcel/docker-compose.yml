@@ -1,0 +1,12 @@
+services:
+  xcel-exporter:
+    build: .
+    image: xcel-exporter:latest
+    container_name: xcel-exporter
+    restart: unless-stopped
+    ports:
+      - "9101:9101"
+    environment:
+      METER_IP: 10.22.14.23
+      METER_PORT: 8081
+      PORT: 9101

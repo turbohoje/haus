@@ -6,3 +6,7 @@ ecobee/token*
 **/.venv
 **/.env
 **/*.pkl
+xcel/cert.pem
+xcel/key.pem
+xcel/__pycache__/
+xcel/*.pyc
