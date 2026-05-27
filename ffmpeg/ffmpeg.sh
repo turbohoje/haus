@@ -22,12 +22,27 @@ dd if=/dev/zero count=10000 bs=1024 > /dev/fb0
 #pass=ENV
 ip=10.22.14.9
 
+last_power=0   # epoch of last power-meter fetch (throttled to every 5s)
+
 while [ 1 ]; do
-  sleep 0.1 
+  sleep 0.1
   date=$(date +"%a %b%d  %H:%M:%S")
   echo "$date" > $wd/center.txt
   cat $wd/center_wx.txt >> $wd/center.txt
-  
+
+  # live power consumption from the local Xcel meter exporter, refreshed every 5s
+  now=$(date +%s)
+  if [ $((now - last_power)) -ge 5 ]; then
+    watts=$(curl -s --max-time 2 http://10.22.14.2:9101/metrics 2>/dev/null \
+            | awk '/^xcel_meter_power_watts /{print $2; exit}')
+    if [ -n "$watts" ]; then
+      printf "%.0f W\n" "$watts" > $wd/power.txt
+    else
+      printf -- "-- W\n" > $wd/power.txt
+    fi
+    last_power=$now
+  fi
+
 
   small_dims="scale=640:360"
   testargs="[0:v]scale=1280:1080:force_original_aspect_ratio=increase,crop=1280:1080:(in_w-1280)/2:(in_h-1080)/2[bg];[1:v]$small_dims[1];[2:v]crop=2520:1380:1326:100,$small_dims[2];[3:v]$small_dims[3];[1][2][3]vstack=inputs=3[stk];[stk][bg]hstack"
@@ -35,6 +50,7 @@ while [ 1 ]; do
   testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/wx_forecast_hour.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw:y=0:line_spacing=20:expansion=none'"
   testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/wx_forecast_week.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw:y=180:line_spacing=20:expansion=none'"
   testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/imgproc/rockiesgame.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=10:y=h-th-10:line_spacing=20:expansion=none'"
+  testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/power.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=10:y=0:line_spacing=20:expansion=none'"
 
 
 
