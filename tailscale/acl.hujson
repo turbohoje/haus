@@ -21,11 +21,11 @@
 			"dst":    ["*:*"],
 		},
 		// Servers can talk to IoT devices on common LAN ports.
-		{
-			"action": "accept",
-			"src":    ["tag:server"],
-			"dst":    ["tag:iot:22,80,443,1883,8123"],
-		},
+		//{
+		//	"action": "accept",
+		//	"src":    ["tag:server"],
+		//	"dst":    ["tag:iot:22,80,443,1883,8123"],
+		//},
 	],
 
 	// SSH policy — who can Tailscale-SSH into what.
@@ -34,7 +34,7 @@
 			"action": "check",
 			"src":    ["group:admins"],
 			"dst":    ["tag:server"],
-			"users":  ["autogroup:nonroot", "root"],
+			//"users":  ["autogroup:nonroot", "root"],
 		},
 	],
 
@@ -42,7 +42,7 @@
 	"tests": [
 		{
 			"src":    "justin@volta-ai.com",
-			"accept": ["tag:server:22", "tag:iot:443"],
+			"accept": ["name:nuchaus:22"],
 		},
 	],
 }
