@@ -41,7 +41,7 @@
 	// Test cases run by `tailscale-cli` and the gitops action on every change.
 	"tests": [
 		{
-			"src":    "justin@volta-ai.com",
+			"src":    "justin@rocketscience.cc",
 			"accept": ["name:nuchaus:22"],
 		},
 	],
