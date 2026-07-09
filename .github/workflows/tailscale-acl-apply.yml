@@ -1,0 +1,23 @@
+name: Tailscale ACL — Apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tailscale/acl.hujson"
+      - ".github/workflows/tailscale-acl-*.yml"
+
+jobs:
+  acl-apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply ACL to tailnet
+        uses: tailscale/gitops-acl-action@v1
+        with:
+          tailnet: ${{ vars.TS_TAILNET }}
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          action: apply
+          policy-file: ./tailscale/acl.hujson
