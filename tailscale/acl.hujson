@@ -1,0 +1,48 @@
+// Tailscale ACL policy file (HuJSON — JSON with comments and trailing commas)
+// Docs: https://tailscale.com/kb/1018/acls
+{
+	// Declare named groups of users. Handy for reuse in ACLs and tags.
+	"groups": {
+		"group:admins": ["justin@volta-ai.com"],
+	},
+
+	// Tag ownership — which groups can apply which device tags.
+	"tagOwners": {
+		"tag:server": ["group:admins"],
+		"tag:iot":    ["group:admins"],
+	},
+
+	// Access control rules. Default-deny; only listed flows are allowed.
+	"acls": [
+		// Admins can reach everything.
+		{
+			"action": "accept",
+			"src":    ["*"],
+			"dst":    ["*:*"],
+		},
+		// Servers can talk to IoT devices on common LAN ports.
+		{
+			"action": "accept",
+			"src":    ["tag:server"],
+			"dst":    ["tag:iot:22,80,443,1883,8123"],
+		},
+	],
+
+	// SSH policy — who can Tailscale-SSH into what.
+	"ssh": [
+		{
+			"action": "check",
+			"src":    ["group:admins"],
+			"dst":    ["tag:server"],
+			"users":  ["autogroup:nonroot", "root"],
+		},
+	],
+
+	// Test cases run by `tailscale-cli` and the gitops action on every change.
+	"tests": [
+		{
+			"src":    "justin@volta-ai.com",
+			"accept": ["tag:server:22", "tag:iot:443"],
+		},
+	],
+}
