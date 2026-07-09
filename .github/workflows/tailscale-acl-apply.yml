@@ -10,6 +10,7 @@ on:
 jobs:
   acl-apply:
     runs-on: ubuntu-latest
+    environment: haus
     steps:
       - uses: actions/checkout@v4
 
