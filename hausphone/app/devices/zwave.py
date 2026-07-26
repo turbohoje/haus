@@ -1,0 +1,594 @@
+"""Z-Wave JS backend for the PWA.
+
+Speaks the zwave-js-server WebSocket JSON protocol directly over aiohttp
+(ws://127.0.0.1:3001) — the same raw approach as zwavejs/zwq.py / zjs.py, so there
+is no zwave-js-server-python version/schema matching to worry about. Exposes the
+interface main.py expects (connect / register_broadcast / refresh_state /
+set_power / attic timers).
+
+Push-based: the driver emits `value updated` events over the same socket, so
+_state stays live and refresh_state() just recomputes from the cached node values
+(no network round-trip).
+
+Command classes per device:
+  - switches (attic fans, fireplaces, reading lights, water pump):
+        Binary Switch (0x25) — read currentValue, write targetValue
+  - garage door opener (Nortek NGD00Z):
+        Barrier Operator (0x66) — read currentState (255=open), write targetState
+"""
+import asyncio
+import itertools
+import json
+import logging
+import os
+import time
+
+log = logging.getLogger(__name__)
+
+# host 3001 → container 3000 (see zwavejs compose). hausphone is network_mode:host.
+ZWAVE_WS_URL = os.environ.get("ZWAVE_WS_URL", "ws://127.0.0.1:3001")
+
+BINARY_SWITCH_CC = 37    # 0x25
+BARRIER_CC = 102         # 0x66 — garage door opener
+CENTRAL_SCENE_CC = 91    # 0x5B — remote button presses (WallMote, node 13)
+
+# key -> device. node_id/endpoint from the zwave-js migration
+# (see zwavejs/MIGRATION_CHECKLIST.md). `kind` defaults to "switch"; "barrier" is
+# the garage door opener (different command class). Multi-channel ZW140s expose
+# their relays on endpoints 1/2 (the root endpoint 0 has no switch).
+DEVICES = {
+    "light_west": {"node_id": 17, "endpoint": 1, "label": "Light West"},
+    "light_east": {"node_id": 17, "endpoint": 2, "label": "Light East"},
+    "attic1":     {"node_id": 16, "endpoint": 1, "label": "Attic1"},
+    "attic2":     {"node_id": 16, "endpoint": 2, "label": "Attic2"},
+    "ld_floor":   {"node_id": 24, "label": "LD Floor"},
+    "garage":     {"node_id": 6, "kind": "barrier", "label": "Garage"},
+    "l_fire":     {"node_id": 14, "label": "Living Fire", "auto_off_minutes": 90},
+    # ZW140 dual-relay fireplace on endpoint 1 (root has no switch). If the fire
+    # doesn't respond to a toggle, switch this to endpoint 2.
+    "m_fire":     {"node_id": 10, "endpoint": 1, "label": "Master Fire", "auto_off_minutes": 90},
+}
+
+
+# ── per-device value-id / on-state helpers ───────────────────────────────────
+def _read_vid(dev):
+    """(commandClass, endpoint, property, propertyKey) used to READ device state."""
+    ep = dev.get("endpoint", 0)
+    if dev.get("kind") == "barrier":
+        return (BARRIER_CC, ep, "currentState", None)
+    return (BINARY_SWITCH_CC, ep, "currentValue", None)
+
+
+def _write_vid(dev) -> dict:
+    """ValueID dict used to WRITE (set) the device."""
+    ep = dev.get("endpoint", 0)
+    if dev.get("kind") == "barrier":
+        return {"commandClass": BARRIER_CC, "endpoint": ep, "property": "targetState"}
+    return {"commandClass": BINARY_SWITCH_CC, "endpoint": ep, "property": "targetValue"}
+
+
+def _raw_to_on(dev, raw):
+    if raw is None:
+        return None
+    if dev.get("kind") == "barrier":
+        return raw == 255                 # Barrier Operator: 255 = fully open
+    return bool(raw)
+
+
+def _on_to_write(dev, on):
+    if dev.get("kind") == "barrier":
+        return 255 if on else 0           # 255 = open, 0 = close
+    return bool(on)
+
+
+# reverse index (node_id, endpoint, cc, property) -> device key, for value events
+_read_index = {}
+for _k, _d in DEVICES.items():
+    _cc, _ep, _prop, _pk = _read_vid(_d)
+    _read_index[(_d["node_id"], _ep, _cc, _prop)] = _k
+
+
+# ── module state ─────────────────────────────────────────────────────────────
+_state: dict = {k: None for k in DEVICES}
+_timer_end: dict = {k: None for k in DEVICES}
+_timers: dict = {}          # device_key -> asyncio.Task
+_last_refresh: float = 0.0
+_broadcast_cb = None
+
+# ── raw WS client handles ────────────────────────────────────────────────────
+_session = None             # aiohttp.ClientSession
+_ws = None                  # aiohttp ClientWebSocketResponse
+_listen_task = None
+_values: dict = {}          # (node_id, endpoint, cc, property, propertyKey) -> value
+_pending: dict = {}         # messageId -> asyncio.Future (command results)
+_msg_id = itertools.count(1)
+_connect_lock = asyncio.Lock()
+
+
+def register_broadcast(cb):
+    """main.py registers an async callback so push events broadcast state."""
+    global _broadcast_cb
+    _broadcast_cb = cb
+
+
+# ── connection lifecycle ─────────────────────────────────────────────────────
+async def connect():
+    """Open the WS, hydrate state, subscribe. Call once at startup."""
+    await _ensure_connected()
+
+
+async def _ensure_connected():
+    """Open (or reopen) the WS if not currently connected. Self-heals after drops."""
+    global _session, _ws, _listen_task
+    async with _connect_lock:
+        if _ws is not None and not _ws.closed:
+            return
+        import aiohttp
+        if _session is not None:
+            try:
+                await _session.close()
+            except Exception:
+                pass
+        _session = aiohttp.ClientSession()
+        _ws = await _session.ws_connect(ZWAVE_WS_URL, heartbeat=20,
+                                        max_msg_size=16 * 1024 * 1024)
+        state = await _handshake(_ws)
+        _hydrate(state)
+        _listen_task = asyncio.create_task(_listen_loop(_ws))
+        log.info("Z-Wave connected: %s (%d nodes)", ZWAVE_WS_URL, len(state.get("nodes", [])))
+
+
+async def _handshake(ws):
+    import aiohttp
+    ver = None
+    while ver is None:
+        msg = await ws.receive()
+        if msg.type == aiohttp.WSMsgType.TEXT:
+            d = json.loads(msg.data)
+            if d.get("type") == "version":
+                ver = d
+        elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+            raise RuntimeError("socket closed during handshake")
+    await ws.send_str(json.dumps({"messageId": str(next(_msg_id)),
+                                  "command": "set_api_schema",
+                                  "schemaVersion": ver["maxSchemaVersion"]}))
+    sl = str(next(_msg_id))
+    await ws.send_str(json.dumps({"messageId": sl, "command": "start_listening"}))
+    while True:
+        msg = await ws.receive()
+        if msg.type == aiohttp.WSMsgType.TEXT:
+            d = json.loads(msg.data)
+            if d.get("type") == "result" and d.get("messageId") == sl:
+                if not d.get("success"):
+                    raise RuntimeError("start_listening failed: %r" % d)
+                return d["result"]["state"]
+        elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+            raise RuntimeError("socket closed waiting for state")
+
+
+def _hydrate(state):
+    """Populate the value cache + _state from the initial start_listening dump."""
+    _values.clear()
+    for node in state.get("nodes", []):
+        nid = node["nodeId"]
+        for v in node.get("values", []):
+            _values[(nid, v.get("endpoint", 0) or 0, v.get("commandClass"),
+                     v.get("property"), v.get("propertyKey"))] = v.get("value")
+    _recompute_state()
+
+
+def _recompute_state():
+    for k, dev in DEVICES.items():
+        cc, ep, prop, pk = _read_vid(dev)
+        raw = _values.get((dev["node_id"], ep, cc, prop, pk))
+        _state[k] = _raw_to_on(dev, raw)
+
+
+async def _listen_loop(ws):
+    """Receive loop: route command results to their futures, apply value events."""
+    global _ws
+    import aiohttp
+    try:
+        async for msg in ws:
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                _dispatch(json.loads(msg.data))
+            elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                break
+    except Exception as e:
+        log.warning("Z-Wave listen loop ended: %s", e)
+    finally:
+        for fut in list(_pending.values()):
+            if not fut.done():
+                fut.set_exception(RuntimeError("Z-Wave connection closed"))
+        _pending.clear()
+        _ws = None
+        log.warning("Z-Wave WS disconnected (will reconnect on next call)")
+
+
+def _dispatch(d):
+    t = d.get("type")
+    if t == "result":
+        fut = _pending.pop(d.get("messageId"), None)
+        if fut is not None and not fut.done():
+            fut.set_result(d)
+    elif t == "event":
+        _handle_event(d.get("event") or {})
+
+
+def _handle_event(ev):
+    if ev.get("event") not in ("value updated", "value notification"):
+        return
+    nid = ev.get("nodeId")
+    a = ev.get("args") or {}
+    ep = a.get("endpoint", 0) or 0
+    cc = a.get("commandClass")
+    prop = a.get("property")
+    pk = a.get("propertyKey")
+    new = a.get("newValue", a.get("value"))
+    _values[(nid, ep, cc, prop, pk)] = new
+
+    # Remote button presses (WallMote) arrive as Central Scene notifications,
+    # not device state — hand them to the scene engine and stop.
+    if cc == CENTRAL_SCENE_CC and prop == "scene":
+        _handle_scene_notification(nid, pk, new)
+        return
+
+    key = _read_index.get((nid, ep, cc, prop))
+    if key is None:
+        return
+    on = _raw_to_on(DEVICES[key], new)
+    if _state.get(key) == on:
+        return
+    _state[key] = on
+    if on is False and _timer_end.get(key) is not None:
+        _cancel_timer(key)
+        _timer_end[key] = None
+    if _broadcast_cb is not None:
+        asyncio.create_task(_broadcast_cb({"zwave": get_state()}))
+
+
+async def _send_command(payload: dict):
+    await _ensure_connected()
+    mid = str(next(_msg_id))
+    fut = asyncio.get_event_loop().create_future()
+    _pending[mid] = fut
+    try:
+        await _ws.send_str(json.dumps({"messageId": mid, **payload}))
+        d = await asyncio.wait_for(fut, timeout=10)
+    finally:
+        _pending.pop(mid, None)
+    if not d.get("success"):
+        raise RuntimeError("Z-Wave command failed: %r" % (d.get("errorCode") or d))
+    return d.get("result")
+
+
+# ── state ────────────────────────────────────────────────────────────────────
+def _build_state() -> dict:
+    now = time.time()
+    result = {}
+    for key in DEVICES:
+        end = _timer_end.get(key)
+        remaining = max(0, int(end - now)) if end is not None else None
+        result[key] = {"on": _state[key], "timer_remaining": remaining}
+    return result
+
+
+def get_state() -> dict:
+    return _build_state()
+
+
+async def refresh_state() -> dict:
+    """Recompute _state from the driver's cached values (kept live by events)."""
+    global _last_refresh
+    try:
+        await _ensure_connected()
+    except Exception as e:
+        log.warning("Z-Wave refresh connect error: %s", e)
+        return _build_state()
+    _recompute_state()
+    for key in DEVICES:
+        if _state.get(key) is False and _timer_end.get(key) is not None:
+            _cancel_timer(key)
+            _timer_end[key] = None
+    _last_refresh = time.monotonic()
+    return _build_state()
+
+
+async def refresh_if_stale(max_age: float = 3.0) -> dict:
+    if time.monotonic() - _last_refresh > max_age:
+        return await refresh_state()
+    return get_state()
+
+
+async def set_power(device_key: str, on: bool) -> dict:
+    dev = DEVICES.get(device_key)
+    if dev is None:
+        raise ValueError(f"Unknown zwave device: {device_key}")
+
+    await _send_command({
+        "command": "node.set_value",
+        "nodeId": dev["node_id"],
+        "valueId": _write_vid(dev),
+        "value": _on_to_write(dev, on),
+    })
+    _state[device_key] = bool(on)
+
+    auto_off = dev.get("auto_off_minutes")
+    if on and auto_off:
+        _timer_end[device_key] = time.time() + auto_off * 60
+        _schedule_auto_off(device_key, auto_off * 60)
+    elif not on:
+        _cancel_timer(device_key)
+        _timer_end[device_key] = None
+
+    return get_state()
+
+
+# ── auto-off timers (transport-agnostic) ─────────────────────────────────────
+def _cancel_timer(device_key: str):
+    task = _timers.pop(device_key, None)
+    if task and not task.done():
+        task.cancel()
+
+
+def _schedule_auto_off(device_key: str, delay_seconds: float):
+    _cancel_timer(device_key)
+
+    async def _auto_off():
+        try:
+            await asyncio.sleep(delay_seconds)
+        except asyncio.CancelledError:
+            return
+        log.info("Z-Wave auto-off timer fired for %s", device_key)
+        try:
+            await set_power(device_key, False)
+        except Exception as e:
+            log.warning("Z-Wave auto-off failed for %s: %s", device_key, e)
+
+    _timers[device_key] = asyncio.create_task(_auto_off())
+
+
+# ── attic shared timers (transport-agnostic) ─────────────────────────────────
+ATTIC_FANS = ("attic1", "attic2")
+_attic_delay_on = {"armed": False, "fans": [], "duration_seconds": 0, "expires_at": None}
+_attic_off_timer = {"armed": False, "duration_seconds": 0, "expires_at": None}
+_attic_delay_on_task = None
+_attic_off_timer_task = None
+
+
+def _attic_delay_on_payload() -> dict:
+    s = _attic_delay_on
+    remaining = None
+    if s["armed"] and s["expires_at"] is not None:
+        remaining = max(0, int(s["expires_at"] - time.time()))
+    return {
+        "armed": s["armed"],
+        "fans": list(s["fans"]),
+        "duration_seconds": s["duration_seconds"],
+        "remaining": remaining,
+    }
+
+
+def _attic_off_timer_payload() -> dict:
+    s = _attic_off_timer
+    remaining = None
+    if s["armed"] and s["expires_at"] is not None:
+        remaining = max(0, int(s["expires_at"] - time.time()))
+    return {
+        "armed": s["armed"],
+        "duration_seconds": s["duration_seconds"],
+        "remaining": remaining,
+    }
+
+
+def get_attic_timers() -> dict:
+    return {
+        "delay_on": _attic_delay_on_payload(),
+        "off_timer": _attic_off_timer_payload(),
+    }
+
+
+async def _broadcast_attic_state():
+    if _broadcast_cb is None:
+        return
+    try:
+        await _broadcast_cb({"zwave": get_state(), "attic_timers": get_attic_timers()})
+    except Exception as e:
+        log.warning("Attic broadcast error: %s", e)
+
+
+async def set_attic_delay_on(armed: bool, fans, duration_seconds: int) -> dict:
+    global _attic_delay_on_task
+    valid_fans = [f for f in (fans or []) if f in ATTIC_FANS]
+    duration_seconds = int(duration_seconds or 0)
+    if armed and (not valid_fans or duration_seconds <= 0):
+        armed = False
+
+    if _attic_delay_on_task and not _attic_delay_on_task.done():
+        _attic_delay_on_task.cancel()
+    _attic_delay_on_task = None
+
+    if armed:
+        _attic_delay_on.update({
+            "armed": True,
+            "fans": valid_fans,
+            "duration_seconds": duration_seconds,
+            "expires_at": time.time() + duration_seconds,
+        })
+        _attic_delay_on_task = asyncio.create_task(_attic_delay_on_runner(duration_seconds))
+    else:
+        _attic_delay_on.update({
+            "armed": False, "fans": [], "duration_seconds": 0, "expires_at": None,
+        })
+
+    return get_attic_timers()
+
+
+async def _attic_delay_on_runner(delay_seconds: float):
+    try:
+        await asyncio.sleep(delay_seconds)
+    except asyncio.CancelledError:
+        return
+    fans = list(_attic_delay_on["fans"])
+    log.info("Attic delay-on timer fired for %s", fans)
+    try:
+        for key in fans:
+            if not _state.get(key):
+                await set_power(key, True)
+    except Exception as e:
+        log.warning("Attic delay-on action failed: %s", e)
+    _attic_delay_on.update({
+        "armed": False, "fans": [], "duration_seconds": 0, "expires_at": None,
+    })
+    await _broadcast_attic_state()
+
+
+async def set_attic_off_timer(armed: bool, duration_seconds: int) -> dict:
+    global _attic_off_timer_task
+    duration_seconds = int(duration_seconds or 0)
+    if armed and duration_seconds <= 0:
+        armed = False
+
+    if _attic_off_timer_task and not _attic_off_timer_task.done():
+        _attic_off_timer_task.cancel()
+    _attic_off_timer_task = None
+
+    if armed:
+        _attic_off_timer.update({
+            "armed": True,
+            "duration_seconds": duration_seconds,
+            "expires_at": time.time() + duration_seconds,
+        })
+        _attic_off_timer_task = asyncio.create_task(_attic_off_timer_runner(duration_seconds))
+    else:
+        _attic_off_timer.update({
+            "armed": False, "duration_seconds": 0, "expires_at": None,
+        })
+
+    return get_attic_timers()
+
+
+async def _attic_off_timer_runner(delay_seconds: float):
+    try:
+        await asyncio.sleep(delay_seconds)
+    except asyncio.CancelledError:
+        return
+    log.info("Attic off-timer fired")
+    try:
+        for key in ATTIC_FANS:
+            if _state.get(key):
+                await set_power(key, False)
+    except Exception as e:
+        log.warning("Attic off-timer action failed: %s", e)
+    _attic_off_timer.update({
+        "armed": False, "duration_seconds": 0, "expires_at": None,
+    })
+    await _broadcast_attic_state()
+
+
+# ── scene engine: remote button presses → scenes ─────────────────────────────
+# The master remote (node 13, Aeotec WallMote Quad / ZW130) reports each button
+# as a Central Scene notification: property 'scene', propertyKey '001'..'004'
+# (the four pads), value = key attribute (0 KeyPressed / 1 KeyReleased /
+# 2 KeyHeldDown). We map (node, button, press-kind) → a named scene; a scene is
+# an ordered list of actions applied to DEVICES. This is driven entirely by the
+# existing listen loop — no route or frontend wiring needed.
+#
+# Press kinds:  "short" = a tap (KeyPressed),  "long" = a hold (KeyHeldDown).
+#
+# ── EDIT BELOW TO CONFIGURE ──────────────────────────────────────────────────
+# A scene is a list of actions. Today an action turns a DEVICES key on/off:
+#     {"device": "l_fire", "on": True}
+# The action dict is intentionally open-ended so timers can be added later
+# without restructuring, e.g. {"device": "attic1", "on": True, "off_after_seconds": 10800}.
+# (off_after_seconds is NOT implemented yet — it would hook _schedule_auto_off.)
+SCENES = {
+    "attic_fans_off": [
+        {"device": "attic1", "on": False},
+        {"device": "attic2", "on": False},
+    ],
+    "attic_fan2_on":  [{"device": "attic2", "on": True}],
+    "light_east_off": [{"device": "light_east", "on": False}],
+    "light_east_on":  [{"device": "light_east", "on": True}],
+    "m_fire_off":     [{"device": "m_fire", "on": False}],
+    "m_fire_on":      [{"device": "m_fire", "on": True}],
+    "light_west_off": [{"device": "light_west", "on": False}],
+    "light_west_on":  [{"device": "light_west", "on": True}],
+}
+
+# (remote node_id, button propertyKey, press kind) → scene name.
+# WallMote Quad pads: "001" top-left, "002" top-right, "003" bottom-left,
+# "004" bottom-right (confirm physical layout with a live capture if unsure).
+REMOTE_BINDINGS = {
+    (13, "001", "short"): "attic_fans_off",   # pad 1 tap  → both attic fans off
+    (13, "001", "long"):  "attic_fan2_on",    # pad 1 hold → attic fan 2 on
+    (13, "002", "short"): "light_east_off",   # pad 2 tap  → light east off
+    (13, "002", "long"):  "light_east_on",    # pad 2 hold → light east on
+    (13, "003", "short"): "m_fire_off",       # pad 3 tap  → master fireplace off
+    (13, "003", "long"):  "m_fire_on",        # pad 3 hold → master fireplace on
+    (13, "004", "short"): "light_west_off",   # pad 4 tap  → light west off
+    (13, "004", "long"):  "light_west_on",    # pad 4 hold → light west on
+}
+# ── END CONFIG ───────────────────────────────────────────────────────────────
+
+_KEY_PRESSED = 0
+_KEY_RELEASED = 1
+_KEY_HELD = 2
+_HOLD_REPEAT_WINDOW = 2.0        # s; ignore repeated KeyHeldDown within one hold
+_hold_last: dict = {}            # (node_id, button) -> last KeyHeldDown time
+
+
+def _handle_scene_notification(node_id, button_key, attribute):
+    """Central Scene notification → fire the bound scene (deduping held repeats)."""
+    if button_key is None:
+        return
+    button = str(button_key)
+    now = time.time()
+    if attribute == _KEY_RELEASED:
+        _hold_last.pop((node_id, button), None)
+        return
+    if attribute == _KEY_HELD:
+        last = _hold_last.get((node_id, button))
+        _hold_last[(node_id, button)] = now
+        if last is not None and now - last < _HOLD_REPEAT_WINDOW:
+            return                       # same hold still repeating; ignore
+        kind = "long"
+    elif attribute == _KEY_PRESSED:
+        _hold_last.pop((node_id, button), None)
+        kind = "short"
+    else:
+        return
+
+    scene = REMOTE_BINDINGS.get((node_id, button, kind))
+    if scene is None:
+        log.info("Remote %s button %s %s press — no scene bound", node_id, button, kind)
+        return
+    log.info("Remote %s button %s %s press → scene %r", node_id, button, kind, scene)
+    asyncio.create_task(run_scene(scene))
+
+
+async def run_scene(name: str):
+    """Apply every action in a named scene, then broadcast fresh state."""
+    actions = SCENES.get(name)
+    if not actions:
+        log.warning("Scene %r is not defined", name)
+        return
+    log.info("Running scene %r (%d actions)", name, len(actions))
+    for action in actions:
+        try:
+            await _apply_scene_action(action)
+        except Exception as e:
+            log.warning("Scene %r action %r failed: %s", name, action, e)
+    if _broadcast_cb is not None:
+        try:
+            await _broadcast_cb({"zwave": get_state()})
+        except Exception as e:
+            log.warning("Scene %r broadcast failed: %s", name, e)
+
+
+async def _apply_scene_action(action: dict):
+    device = action.get("device")
+    if device in DEVICES and "on" in action:
+        await set_power(device, bool(action["on"]))
+        return
+    raise ValueError(f"unrecognized scene action: {action!r}")
