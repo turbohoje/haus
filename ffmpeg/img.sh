@@ -19,7 +19,35 @@ function stdlog {
     fi
 }
 
-maxcurl=3
+# A snapshot is a real frame only if it starts with the JPEG SOI marker (FF D8)
+# *and* ends with the EOI marker (FF D9). An offline/erroring camera's Snap API
+# returns a small JSON error body (no SOI). A slow camera (e.g. 10.22.14.58 takes
+# ~13s to render a Snap) gets cut off by --max-time, leaving a partial file that
+# DOES start with FF D8 but has no EOI; ffmpeg renders that truncated frame as a
+# flat green tile. Requiring EOI rejects both cases before promoting _N.jpg to the
+# live N.jpg, so commit_frame keeps the last good frame / offline.jpg instead.
+function is_jpeg {
+    [ -s "$1" ] || return 1
+    [ "$(od -An -N2 -tx1 "$1" | tr -d ' \n')" = "ffd8" ] || return 1
+    [ "$(tail -c2 "$1" | od -An -tx1 | tr -d ' \n')" = "ffd9" ]
+}
+
+# Promote a freshly captured frame ($1=_N.jpg) to its on-screen slot ($2=N.jpg)
+# only when it is valid. If it is bad, keep the last good frame on screen; if
+# there is no good frame yet, fall back to the offline placeholder so the
+# composite still renders. (Same "last good value" idea as power.txt in ffmpeg.sh.)
+function commit_frame {
+    if is_jpeg "$1"; then
+        cp "$1" "$2"
+    elif ! is_jpeg "$2"; then
+        cp "$wd/offline.jpg" "$2"
+    fi
+}
+
+# 15s so the slow camera (10.22.14.58 ~13s/Snap) can finish instead of being
+# truncated. Tradeoff: curls run in parallel and the loop waits for all of them,
+# so the slow cam now paces the whole capture cycle at ~13s rather than ~3s.
+maxcurl=15
 
 mkdir -p $wd/imgproc
 
@@ -44,9 +72,9 @@ while [ 1 ]; do
     
     for job in `jobs -p`; do wait ${job}; done
 
-    cp $wd/imgproc/_0.jpg $wd/imgproc/0.jpg
-    cp $wd/imgproc/_1.jpg $wd/imgproc/1.jpg
-    cp $wd/imgproc/_3.jpg $wd/imgproc/3.jpg
+    commit_frame $wd/imgproc/_0.jpg $wd/imgproc/0.jpg
+    commit_frame $wd/imgproc/_1.jpg $wd/imgproc/1.jpg
+    commit_frame $wd/imgproc/_3.jpg $wd/imgproc/3.jpg
 
     # date=$(date +"%a %b%d  %H:%M:%S")
     # echo "$date" > $wd/center.txt

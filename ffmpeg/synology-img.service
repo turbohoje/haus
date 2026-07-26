@@ -1,0 +1,14 @@
+[Unit]
+Description=Synology Photos display cycler (rotates cached images onto random.jpg)
+
+[Service]
+Type=simple
+User=turbohoje
+Group=turbohoje
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/turbohoje/haus/ffmpeg/synology_img.py --service
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

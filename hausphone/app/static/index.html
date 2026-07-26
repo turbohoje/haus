@@ -10,14 +10,14 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>Haus</title>
-  <link rel="stylesheet" href="/static/style.css?v=21">
+  <link rel="stylesheet" href="/static/style.css?v=22">
 </head>
 <body>
 
   <!-- ── Top bar (status-bar safe area + version) ── -->
   <div id="top-bar">
     <button id="settings-gear" aria-label="Settings">&#9881;</button>
-    <span id="app-version">v21</span>
+    <span id="app-version">v22</span>
   </div>
 
   <!-- ── Live camera ── -->
@@ -74,17 +74,17 @@
       <div class="card-pair">
         <div class="card-half">
           <div class="card-header">
-            <span class="status-dot" id="vera-east-dot"></span>
+            <span class="status-dot" id="zwave-east-dot"></span>
             <span class="card-label">Lght E</span>
-            <button class="toggle-btn" id="vera-east-toggle">OFF</button>
+            <button class="toggle-btn" id="zwave-east-toggle">OFF</button>
           </div>
         </div>
         <div class="card-pair-divider"></div>
         <div class="card-half">
           <div class="card-header">
-            <span class="status-dot" id="vera-west-dot"></span>
+            <span class="status-dot" id="zwave-west-dot"></span>
             <span class="card-label">Lght W</span>
-            <button class="toggle-btn" id="vera-west-toggle">OFF</button>
+            <button class="toggle-btn" id="zwave-west-toggle">OFF</button>
           </div>
         </div>
       </div>
@@ -95,17 +95,17 @@
       <div class="card-pair">
         <div class="card-half">
           <div class="card-header">
-            <span class="status-dot" id="vera-attic1-dot"></span>
+            <span class="status-dot" id="zwave-attic1-dot"></span>
             <span class="card-label">Attic1</span>
-            <button class="toggle-btn" id="vera-attic1-toggle">OFF</button>
+            <button class="toggle-btn" id="zwave-attic1-toggle">OFF</button>
           </div>
         </div>
         <div class="card-pair-divider"></div>
         <div class="card-half">
           <div class="card-header">
-            <span class="status-dot" id="vera-attic2-dot"></span>
+            <span class="status-dot" id="zwave-attic2-dot"></span>
             <span class="card-label">Attic2</span>
-            <button class="toggle-btn" id="vera-attic2-toggle">OFF</button>
+            <button class="toggle-btn" id="zwave-attic2-toggle">OFF</button>
           </div>
         </div>
       </div>
@@ -153,9 +153,9 @@
     <!-- LD Floor -->
     <div class="card" data-element="ld_floor">
       <div class="card-header">
-        <span class="status-dot" id="vera-ld-floor-dot"></span>
+        <span class="status-dot" id="zwave-ld-floor-dot"></span>
         <span class="card-label">LD Floor</span>
-        <button class="toggle-btn" id="vera-ld-floor-toggle">OFF</button>
+        <button class="toggle-btn" id="zwave-ld-floor-toggle">OFF</button>
       </div>
     </div>
 
@@ -172,29 +172,29 @@
     <!-- Living Fire (auto-off 90m) -->
     <div class="card" data-element="l_fire">
       <div class="card-header">
-        <span class="status-dot" id="vera-l-fire-dot"></span>
+        <span class="status-dot" id="zwave-l-fire-dot"></span>
         <span class="card-label">Living Fire</span>
-        <span class="timer-badge" id="vera-l-fire-timer"></span>
-        <button class="toggle-btn" id="vera-l-fire-toggle">OFF</button>
+        <span class="timer-badge" id="zwave-l-fire-timer"></span>
+        <button class="toggle-btn" id="zwave-l-fire-toggle">OFF</button>
       </div>
     </div>
 
     <!-- Master Fire (auto-off 90m) -->
     <div class="card" data-element="m_fire">
       <div class="card-header">
-        <span class="status-dot" id="vera-m-fire-dot"></span>
+        <span class="status-dot" id="zwave-m-fire-dot"></span>
         <span class="card-label">Master Fire</span>
-        <span class="timer-badge" id="vera-m-fire-timer"></span>
-        <button class="toggle-btn" id="vera-m-fire-toggle">OFF</button>
+        <span class="timer-badge" id="zwave-m-fire-timer"></span>
+        <button class="toggle-btn" id="zwave-m-fire-toggle">OFF</button>
       </div>
     </div>
 
     <!-- Garage Door (slide to activate) -->
     <div class="card" data-element="garage">
       <div class="card-header">
-        <span class="status-dot" id="vera-garage-dot"></span>
+        <span class="status-dot" id="zwave-garage-dot"></span>
         <span class="card-label">Garage</span>
-        <span class="state-badge" id="vera-garage-state">CLOSED</span>
+        <span class="state-badge" id="zwave-garage-state">CLOSED</span>
       </div>
       <div class="slide-activate">
         <input type="range" id="garage-slide" min="0" max="100" value="0" aria-label="Slide to activate garage">
@@ -223,16 +223,8 @@
       <button id="settings-close" aria-label="Close">&#x2715;</button>
     </div>
     <div id="settings-list"></div>
-    <div id="settings-vera-system">
-      <div class="settings-section-title">Vera System</div>
-      <div class="system-btn-row">
-        <button class="system-btn" id="vera-zwave-reset-btn">Z-Wave Reset</button>
-        <button class="system-btn" id="vera-reload-btn">Reload Engine</button>
-        <button class="system-btn danger" id="vera-reboot-btn">Reboot Vera</button>
-      </div>
-    </div>
   </div>
 
-  <script src="/static/app.js?v=21"></script>
+  <script src="/static/app.js?v=22"></script>
 </body>
 </html>

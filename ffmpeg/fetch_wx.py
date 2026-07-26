@@ -1,11 +1,75 @@
 #!/usr/bin/env python3
 
 import requests, sys, re, pickle, os
+import asyncio, json, itertools
 from datetime import date
 from lxml import html
 from playwright.sync_api import sync_playwright
+try:
+    import aiohttp
+except ImportError:
+    aiohttp = None
 
 current_file_directory = os.path.dirname(os.path.abspath(__file__))
+
+# --- zwave-js temperature source (replaces the Vera data_request reads) ---
+# Vera (10.22.14.4) decommissioned 2026-07-26; sensors migrated to zwave-js.
+# Air temperature = Multilevel Sensor CC (49). Node map (old Vera DeviceNum):
+#   oat/outdoor -> Patio ZSE40   node 8   (was 112)
+#   basement    -> Basement ZW100 node 21 (was 240)
+#   ladyden     -> Lady Den ZW100 node 9  (was 236)
+#   master      -> Master ZW100   node 12 (was 169)
+#   living      -> Living Room ZW100 node 3 (was 246)
+ZWAVE_WS_URL = "ws://127.0.0.1:3001"
+TEMP_NODES = {"oat": 8, "basement": 21, "ladyden": 9, "master": 12, "living": 3}
+
+def _fetch_zwave_temps_c():
+    """Read Air temperature for TEMP_NODES from zwave-js in one WS round-trip.
+    Returns {name: celsius}; °F readings are converted, unreachable nodes omitted."""
+    if aiohttp is None:
+        print("aiohttp not available; cannot read zwave-js temps")
+        return {}
+    async def run():
+        _id = itertools.count(1)
+        mid = lambda: str(next(_id))
+        async with aiohttp.ClientSession() as sess:
+            async with sess.ws_connect(ZWAVE_WS_URL, heartbeat=20) as ws:
+                ver = None
+                while ver is None:
+                    d = json.loads((await ws.receive()).data)
+                    if d.get("type") == "version":
+                        ver = d
+                await ws.send_str(json.dumps({"messageId": mid(),
+                    "command": "set_api_schema", "schemaVersion": ver["maxSchemaVersion"]}))
+                slid = mid()
+                await ws.send_str(json.dumps({"messageId": slid, "command": "start_listening"}))
+                state = None
+                while state is None:
+                    d = json.loads((await ws.receive()).data)
+                    if d.get("type") == "result" and d.get("messageId") == slid:
+                        state = d["result"]["state"]
+        by_id = {n["nodeId"]: n for n in state["nodes"]}
+        out = {}
+        for name, nid in TEMP_NODES.items():
+            node = by_id.get(nid)
+            if not node:
+                continue
+            for v in node.get("values", []):
+                if (v.get("commandClass") == 49
+                        and str(v.get("property")) == "Air temperature"
+                        and v.get("value") is not None):
+                    val = float(v["value"])
+                    unit = (v.get("metadata") or {}).get("unit") or ""
+                    if "F" in unit:
+                        val = (val - 32) * 5.0 / 9.0
+                    out[name] = val
+                    break
+        return out
+    try:
+        return asyncio.run(asyncio.wait_for(run(), timeout=12))
+    except Exception as e:
+        print(f"zwave-js temp fetch failed: {e}")
+        return {}
 
 def fetch_html(url):
     try:
@@ -43,46 +107,20 @@ url = 'https://www.wunderground.com/weather/us/co/denver'  # Replace with your d
 aqi_url = 'https://www.wunderground.com/health/us/co/denver?cm_ven=localwx_modaq'
 xpath = ''  # Replace with the XPath of the element you want to find
 
-oat_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=112&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
-basemnt_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=240&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
-ladyden_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=236&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
-master_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=169&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
-living_now_c = "http://10.22.14.4:3480/data_request?id=variableget&DeviceNum=246&serviceId=urn:upnp-org:serviceId:TemperatureSensor1&Variable=CurrentTemperature"
+# Temperatures now come from zwave-js (one WS round-trip pulls all five, in °C).
+_temps = _fetch_zwave_temps_c()
 
-r = requests.get(oat_now_c)
-now_c = float(r.text)
+if "oat" not in _temps:
+    print("Failed to read outdoor temp from zwave-js")
+    sys.exit(1)
+now_c = _temps["oat"]                        # outdoor / Patio sensor (node 8)
 now_f = ctof(now_c)
 now_cs = "{:4.1f}".format(now_c)
 
-try:
-    r = requests.get(basemnt_now_c)
-    now_c = float(r.text)
-    basement_now_txt = "{:4.1f}".format(now_c)
-except:
-  basement_now_txt = "-nf-"
-
-
-try:
-    r = requests.get(ladyden_now_c)
-    now_c = float(r.text)
-    ladyden_now_txt = "{:4.1f}".format(now_c)
-except:
-    ladyden_now_txt = "-nf-"
-
-
-try:
-    r = requests.get(master_now_c)
-    now_c = float(r.text)
-    master_now_txt = "{:4.1f}".format(now_c)
-except:
-    master_now_txt = "-nf-"
-
-try:
-    r = requests.get(living_now_c)
-    now_c = float(r.text)
-    living_now_txt = "{:4.1f}".format(now_c)
-except:
-    living_now_txt = "-nf-"
+basement_now_txt = "{:4.1f}".format(_temps["basement"]) if "basement" in _temps else "-nf-"
+ladyden_now_txt  = "{:4.1f}".format(_temps["ladyden"])  if "ladyden"  in _temps else "-nf-"
+master_now_txt   = "{:4.1f}".format(_temps["master"])   if "master"   in _temps else "-nf-"
+living_now_txt   = "{:4.1f}".format(_temps["living"])   if "living"   in _temps else "-nf-"
 
 
 content = fetch_html(url)

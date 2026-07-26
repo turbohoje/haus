@@ -14,7 +14,8 @@ from starlette.responses import Response
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from app.devices import fan, vera, wemo
+from app.devices import fan, wemo
+from app.devices import zwave
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
 log = logging.getLogger("main")
@@ -57,7 +58,7 @@ async def websocket_endpoint(ws: WebSocket):
         # switches show their true state, not the cached value from the last poll.
         # Rate-limited inside refresh_if_stale to protect the hub from rapid reconnects.
         try:
-            await vera.refresh_if_stale()
+            await zwave.refresh_if_stale()
         except Exception as e:
             log.warning("WS connect refresh error: %s", e)
         await ws.send_text(json.dumps({"type": "state", "data": _collect_state()}))
@@ -125,8 +126,8 @@ async def serve_cert():
 def _collect_state() -> dict:
     return {
         "fan": fan.get_state(),
-        "vera": vera.get_state(),
-        "attic_timers": vera.get_attic_timers(),
+        "zwave": zwave.get_state(),
+        "attic_timers": zwave.get_attic_timers(),
         "wemo": wemo.get_state(),
     }
 
@@ -168,39 +169,22 @@ async def light_brightness(body: dict = Body(...)):
 
 
 # --------------------------------------------------------------------------
-# Vera control
+# Z-Wave control
 # --------------------------------------------------------------------------
-@app.post("/api/vera/{device_key}/power")
-async def vera_power(device_key: str, body: dict = Body(...)):
-    state = await vera.set_power(device_key, bool(body.get("on")))
-    await broadcast({"type": "state", "data": {"vera": state}})
+@app.post("/api/zwave/{device_key}/power")
+async def zwave_power(device_key: str, body: dict = Body(...)):
+    state = await zwave.set_power(device_key, bool(body.get("on")))
+    await broadcast({"type": "state", "data": {"zwave": state}})
     return state
 
 
 # --------------------------------------------------------------------------
 # Attic timers (delay-on, off-timer)
 # --------------------------------------------------------------------------
-# --------------------------------------------------------------------------
-# Vera system actions (Z-Wave chip reset, engine reload, reboot)
-# --------------------------------------------------------------------------
-@app.post("/api/vera/system/zwave-reset")
-async def vera_zwave_reset():
-    return await vera.soft_reset_zwave()
-
-
-@app.post("/api/vera/system/reload-engine")
-async def vera_reload_engine():
-    return await vera.reload_engine()
-
-
-@app.post("/api/vera/system/reboot")
-async def vera_reboot():
-    return await vera.reboot_vera()
-
 
 @app.post("/api/attic/delay-on")
 async def attic_delay_on(body: dict = Body(...)):
-    state = await vera.set_attic_delay_on(
+    state = await zwave.set_attic_delay_on(
         bool(body.get("armed")),
         body.get("fans") or [],
         int(body.get("duration_seconds") or 0),
@@ -211,7 +195,7 @@ async def attic_delay_on(body: dict = Body(...)):
 
 @app.post("/api/attic/off-timer")
 async def attic_off_timer(body: dict = Body(...)):
-    state = await vera.set_attic_off_timer(
+    state = await zwave.set_attic_off_timer(
         bool(body.get("armed")),
         int(body.get("duration_seconds") or 0),
     )
@@ -267,7 +251,7 @@ async def _poll_loop():
     while True:
         try:
             await fan.refresh_state()
-            await vera.refresh_state()
+            await zwave.refresh_state()
             await wemo.refresh_state()
             await broadcast({"type": "state", "data": _collect_state()})
             log.info("Device state polled")
@@ -290,8 +274,8 @@ async def startup():
 
     wemo.load_config()
 
-    # Let vera push state updates when its background timers fire
-    vera.register_broadcast(lambda data: broadcast({"type": "state", "data": data}))
+    # Let zwave push state updates when its background timers fire
+    zwave.register_broadcast(lambda data: broadcast({"type": "state", "data": data}))
 
     # Connect to fan (non-fatal if unavailable)
     try:
@@ -299,9 +283,15 @@ async def startup():
     except Exception as e:
         log.warning("Fan startup error: %s", e)
 
+    # Connect to Z-Wave JS (non-fatal if unavailable; refresh_state self-heals)
+    try:
+        await zwave.connect()
+    except Exception as e:
+        log.warning("Z-Wave startup error: %s", e)
+
     # Initial state poll
     try:
-        await vera.refresh_state()
+        await zwave.refresh_state()
         await wemo.refresh_state()
     except Exception as e:
         log.warning("Initial poll error: %s", e)

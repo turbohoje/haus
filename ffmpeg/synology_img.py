@@ -572,6 +572,24 @@ def get_images_in_shared_space(nas_url, sid, synotoken, path=""):
 if __name__ == "__main__":
 
     download_flag = "--download" in sys.argv
+    service_flag = "--service" in sys.argv
+
+    # Long-running display service: continuously rotate already-cached images onto
+    # random.jpg. Replaces the every-minute cron that cycled 3x/run. Cached cycling
+    # needs no NAS login, so we skip auth entirely; fresh downloads stay on the
+    # daily --download cron. The index lives in image_queue.pkl and is re-read/
+    # re-written each cycle, so serial order survives both this continuous loop and
+    # any restart, and it auto-adopts the freshly-shuffled pickle after --download.
+    if service_flag:
+        print("synology_img display service: cycling cached images every 20s", flush=True)
+        while True:
+            try:
+                cycle_cached_image()
+            except Exception as e:
+                # Long-lived: one transient hiccup (e.g. pickle mid-rewrite by the
+                # daily --download) must not kill the service. Log and keep going.
+                print(f"cycle error (continuing): {e}", flush=True)
+            time.sleep(20)
 
     auth = get_synology_token(NAS_URL, UN, PW)
     if auth:

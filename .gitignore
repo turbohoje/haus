@@ -5,6 +5,7 @@ ffmpeg/cache/
 ecobee/token*
 **/.venv
 **/.env
+**/.cache
 **/*.pkl
 xcel/cert.pem
 xcel/key.pem

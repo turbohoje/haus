@@ -3,7 +3,7 @@
 const SERVER = `${location.protocol}//${location.host}`;
 let ws = null;
 let wsRetryMs = 1000;
-let state = { fan: {}, vera: {}, wemo: {}, attic_timers: null };
+let state = { fan: {}, zwave: {}, wemo: {}, attic_timers: null };
 let timerInterval = null;
 let deferredInstallPrompt = null;
 
@@ -192,9 +192,9 @@ function connectWS() {
 // ── State management ──────────────────────────────────────────────────────
 function mergeState(data) {
   if (data.fan)  Object.assign(state.fan,  data.fan);
-  if (data.vera) {
-    for (const [k, v] of Object.entries(data.vera)) {
-      state.vera[k] = Object.assign(state.vera[k] || {}, v);
+  if (data.zwave) {
+    for (const [k, v] of Object.entries(data.zwave)) {
+      state.zwave[k] = Object.assign(state.zwave[k] || {}, v);
     }
   }
   if (data.wemo) {
@@ -292,24 +292,24 @@ fanBrightSlider?.addEventListener("input", () => {
   fanBrightVal.textContent = fanBrightSlider.value + "%";
 });
 
-// ── Vera lights ───────────────────────────────────────────────────────────
-function bindVera(deviceKey, btnId) {
+// ── Zwave lights ───────────────────────────────────────────────────────────
+function bindZwave(deviceKey, btnId) {
   const btn = document.getElementById(btnId);
   btn?.addEventListener("click", async () => {
-    const on = !state.vera[deviceKey]?.on;
+    const on = !state.zwave[deviceKey]?.on;
     btn.disabled = true;
-    try { mergeState({ vera: await post(`/api/vera/${deviceKey}/power`, { on }) }); renderAll(); }
+    try { mergeState({ zwave: await post(`/api/zwave/${deviceKey}/power`, { on }) }); renderAll(); }
     catch(e) { console.error(e); }
     finally { btn.disabled = false; }
   });
 }
-bindVera("light_west", "vera-west-toggle");
-bindVera("light_east", "vera-east-toggle");
-bindVera("attic1", "vera-attic1-toggle");
-bindVera("attic2", "vera-attic2-toggle");
-bindVera("ld_floor", "vera-ld-floor-toggle");
-bindVera("l_fire", "vera-l-fire-toggle");
-bindVera("m_fire", "vera-m-fire-toggle");
+bindZwave("light_west", "zwave-west-toggle");
+bindZwave("light_east", "zwave-east-toggle");
+bindZwave("attic1", "zwave-attic1-toggle");
+bindZwave("attic2", "zwave-attic2-toggle");
+bindZwave("ld_floor", "zwave-ld-floor-toggle");
+bindZwave("l_fire", "zwave-l-fire-toggle");
+bindZwave("m_fire", "zwave-m-fire-toggle");
 
 // ── Garage door (slide to activate) ───────────────────────────────────────
 const garageSlide = document.getElementById("garage-slide");
@@ -331,9 +331,9 @@ garageSlide?.addEventListener("input", () => {
 async function fireGarage() {
   if (garageFiring) return;
   garageFiring = true;
-  const on = !state.vera.garage?.on;
+  const on = !state.zwave.garage?.on;
   try {
-    mergeState({ vera: await post("/api/vera/garage/power", { on }) });
+    mergeState({ zwave: await post("/api/zwave/garage/power", { on }) });
     renderAll();
   } catch (e) {
     console.error(e);
@@ -352,35 +352,6 @@ garageSlide?.addEventListener("change", () => {
     resetGarageSlide();
   }
 });
-
-// ── Vera system actions (Z-Wave reset / engine reload / Vera reboot) ─────
-function bindSystemBtn(btnId, endpoint, label, postLabel) {
-  const btn = document.getElementById(btnId);
-  if (!btn) return;
-  btn.addEventListener("click", async () => {
-    if (!confirm(`${label}?\n\nThis will affect the whole Vera hub.`)) return;
-    btn.disabled = true;
-    btn.classList.add("busy");
-    const prev = btn.textContent;
-    btn.textContent = "…";
-    try {
-      const r = await post(endpoint, {});
-      btn.textContent = r?.ok ? (postLabel || "Sent") : `HTTP ${r?.status || "?"}`;
-    } catch (e) {
-      console.error(e);
-      btn.textContent = "Failed";
-    } finally {
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.classList.remove("busy");
-        btn.textContent = prev;
-      }, 2500);
-    }
-  });
-}
-bindSystemBtn("vera-zwave-reset-btn", "/api/vera/system/zwave-reset", "Soft-reset Z-Wave chip", "Reset sent");
-bindSystemBtn("vera-reload-btn",      "/api/vera/system/reload-engine", "Reload Luup engine",    "Reloading");
-bindSystemBtn("vera-reboot-btn",      "/api/vera/system/reboot",        "Reboot Vera (WiFi will drop)", "Rebooting");
 
 // ── WeMo ──────────────────────────────────────────────────────────────────
 function bindWemo(deviceName, btnId, badgeId) {
@@ -417,8 +388,8 @@ function updateTimers() {
   for (const [name, dev] of Object.entries(state.wemo)) {
     renderTimerBadge(`wemo-${name.replace(/_/g, "-")}-timer`, dev?.timer_remaining);
   }
-  for (const [name, dev] of Object.entries(state.vera)) {
-    renderTimerBadge(`vera-${name.replace(/_/g, "-")}-timer`, dev?.timer_remaining);
+  for (const [name, dev] of Object.entries(state.zwave)) {
+    renderTimerBadge(`zwave-${name.replace(/_/g, "-")}-timer`, dev?.timer_remaining);
   }
 }
 
@@ -575,23 +546,23 @@ function renderAll() {
   setSlider(fanSpeedSlider, fanSpeedVal, f.fan_speed);
   setSlider(fanBrightSlider, fanBrightVal, f.light_brightness);
 
-  const v = state.vera;
-  setToggle(document.getElementById("vera-west-toggle"), v.light_west?.on);
-  setToggle(document.getElementById("vera-east-toggle"), v.light_east?.on);
-  setToggle(document.getElementById("vera-attic1-toggle"), v.attic1?.on);
-  setToggle(document.getElementById("vera-attic2-toggle"), v.attic2?.on);
-  setToggle(document.getElementById("vera-ld-floor-toggle"), v.ld_floor?.on);
-  setToggle(document.getElementById("vera-l-fire-toggle"), v.l_fire?.on);
-  setToggle(document.getElementById("vera-m-fire-toggle"), v.m_fire?.on);
-  setDot(document.getElementById("vera-west-dot"), v.light_west?.on);
-  setDot(document.getElementById("vera-east-dot"), v.light_east?.on);
-  setDot(document.getElementById("vera-attic1-dot"), v.attic1?.on);
-  setDot(document.getElementById("vera-attic2-dot"), v.attic2?.on);
-  setDot(document.getElementById("vera-ld-floor-dot"), v.ld_floor?.on);
-  setDot(document.getElementById("vera-l-fire-dot"), v.l_fire?.on);
-  setDot(document.getElementById("vera-m-fire-dot"), v.m_fire?.on);
-  setDot(document.getElementById("vera-garage-dot"), v.garage?.on);
-  const garageStateEl = document.getElementById("vera-garage-state");
+  const v = state.zwave;
+  setToggle(document.getElementById("zwave-west-toggle"), v.light_west?.on);
+  setToggle(document.getElementById("zwave-east-toggle"), v.light_east?.on);
+  setToggle(document.getElementById("zwave-attic1-toggle"), v.attic1?.on);
+  setToggle(document.getElementById("zwave-attic2-toggle"), v.attic2?.on);
+  setToggle(document.getElementById("zwave-ld-floor-toggle"), v.ld_floor?.on);
+  setToggle(document.getElementById("zwave-l-fire-toggle"), v.l_fire?.on);
+  setToggle(document.getElementById("zwave-m-fire-toggle"), v.m_fire?.on);
+  setDot(document.getElementById("zwave-west-dot"), v.light_west?.on);
+  setDot(document.getElementById("zwave-east-dot"), v.light_east?.on);
+  setDot(document.getElementById("zwave-attic1-dot"), v.attic1?.on);
+  setDot(document.getElementById("zwave-attic2-dot"), v.attic2?.on);
+  setDot(document.getElementById("zwave-ld-floor-dot"), v.ld_floor?.on);
+  setDot(document.getElementById("zwave-l-fire-dot"), v.l_fire?.on);
+  setDot(document.getElementById("zwave-m-fire-dot"), v.m_fire?.on);
+  setDot(document.getElementById("zwave-garage-dot"), v.garage?.on);
+  const garageStateEl = document.getElementById("zwave-garage-state");
   if (garageStateEl) {
     garageStateEl.textContent = v.garage?.on ? "OPEN" : "CLOSED";
     garageStateEl.classList.toggle("on", !!v.garage?.on);
@@ -621,7 +592,7 @@ function renderAll() {
         dev.timer_remaining = Math.max(0, dev.timer_remaining - 1);
       }
     }
-    for (const dev of Object.values(state.vera)) {
+    for (const dev of Object.values(state.zwave)) {
       if (dev?.timer_remaining != null && dev.timer_remaining > 0) {
         dev.timer_remaining = Math.max(0, dev.timer_remaining - 1);
       }

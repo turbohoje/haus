@@ -80,7 +80,12 @@ device.fan_mode = OffOnAuto.ON
 device.speed = 4                # 0–7 discrete (speed_percent is read-only — map pct→0-7)
 device.light_mode = OffOnAuto.OFF
 device.light_brightness_percent = 75
+
+# Connection health
+device.available    # True once the protobuf session is up; False after a drop
 ```
+
+`fan.py` uses an `_ensure_connected()` helper (guarded by an asyncio lock) that lazily reconnects whenever `_device.available` is False — called from every setter and from the periodic poll. A transient fan outage (power cycle, Wi-Fi blip, re-pairing) self-heals within one poll cycle without restarting the container.
 
 ### Vera Z-Wave Hub (10.22.14.4)
 - REST API: `http://10.22.14.4:3480/data_request`
@@ -251,4 +256,4 @@ hausphone/
 - Desktop dashboard verbose layout
 - Additional Vera devices, TVs, thermostats
 - Auto/whoosh fan modes
-- Re-poll fan/wemo on WebSocket connect (Vera is already re-polled; fan is push-based via aiobafi6, wemo less critical)
+- Re-poll wemo on WebSocket connect (Vera is already re-polled; fan auto-reconnects on poll via `_ensure_connected()`, wemo less critical)
