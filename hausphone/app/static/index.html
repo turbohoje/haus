@@ -10,14 +10,14 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>Haus</title>
-  <link rel="stylesheet" href="/static/style.css?v=22">
+  <link rel="stylesheet" href="/static/style.css?v=23">
 </head>
 <body>
 
   <!-- ── Top bar (status-bar safe area + version) ── -->
   <div id="top-bar">
     <button id="settings-gear" aria-label="Settings">&#9881;</button>
-    <span id="app-version">v22</span>
+    <span id="app-version">v23</span>
   </div>
 
   <!-- ── Live camera ── -->
@@ -31,6 +31,26 @@
 
   <!-- ── Controls ── -->
   <div id="controls">
+
+    <!-- Door Locks (collapsed: all four states; expand: pick a door + slide to toggle) -->
+    <div class="card" data-element="door_locks">
+      <div class="card-header">
+        <span class="status-dot" id="locks-dot"></span>
+        <span class="card-label">Locks</span>
+        <span class="locks-summary" id="locks-summary"></span>
+        <button class="expand-btn" id="locks-expand" aria-label="Lock controls">&#8964;</button>
+      </div>
+      <div class="locks-grid" id="locks-grid"></div>
+      <div class="card-detail" id="locks-detail">
+        <div class="lock-picker" id="lock-picker"></div>
+        <div class="lock-actuate">
+          <div class="lock-actuate-label" id="lock-actuate-label">Select a door above</div>
+          <div class="slide-activate lock-slide" id="lock-slide-wrap" hidden>
+            <input type="range" id="lock-slide" min="0" max="100" value="0" aria-label="Slide to toggle lock">
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Bedroom Fan + Light -->
     <div class="card" data-element="m_fan_light">
@@ -225,6 +245,6 @@
     <div id="settings-list"></div>
   </div>
 
-  <script src="/static/app.js?v=22"></script>
+  <script src="/static/app.js?v=23"></script>
 </body>
 </html>

@@ -134,6 +134,26 @@ scene **once** (re-arms on release or after a 2 s gap). The action dict is delib
 a future per-action timer (e.g. `"off_after_seconds": 10800`, hooking `_schedule_auto_off`) slots in
 without restructuring — not implemented yet.
 
+#### Door Locks
+Four Allegion BE469 deadbolts (S0-secured), in `LOCKS` in `zwave.py` (separate from `DEVICES` since
+they aren't on/off): read Door Lock CC (0x62) `currentMode` (255 Secured / 0 Unsecured / 254 Unknown
+→ `locked`/`unlocked`/`unknown`), write `targetMode`. Exposed via `GET /api/state` key `locks` and
+`POST /api/lock/{key}` `{ "locked": bool }`; state stays live off `currentMode` value events, like the
+switches.
+
+| Key | Node | Location |
+|-----|------|----------|
+| `front_door` | 19 | Drawing Room |
+| `back_door` | 4 | Living Room |
+| `garage_lock` | 5 | Garage |
+| `balcony_lock` | 7 | Master |
+
+UI: the first controls card (`data-element="door_locks"`) shows all four states at a glance —
+unlocked/unknown are highlighted for a nighttime "is everything locked?" check. Expanding reveals a
+door picker + slide-to-toggle (slide both directions, so no accidental single-tap actuation).
+**Node 4 (Back Door)** has an incomplete interview: it reports `unknown` and control is best-effort
+until it starts responding to Door Lock CC.
+
 ### WeMo Smart Plugs
 - Controlled via `pywemo` direct-by-IP
 - Config: `wemo_config.json`
@@ -199,20 +219,21 @@ Cards use a dark surface with rounded corners. There are two card patterns:
 ```
 
 ### Current card order (top to bottom)
-1. **M.Fan / M.Light** — paired card, fan speed + brightness sliders
-2. **Lght E / Lght W** — paired card, no sliders (E on left, W on right)
-3. **Attic1 / Attic2** — paired card; expand-down timers (delay-on, off-timer)
-4. **LD Floor** — single card
-5. **Water Feature** — single card, auto-off countdown timer (WeMo)
-6. **Living Fire** — single card, 90-min auto-off countdown
-7. **Master Fire** — single card, 90-min auto-off countdown
-8. **Garage** — single card, slide-to-activate (prevents pocket-dial)
+1. **Locks** — door-lock inventory; all four states shown, expand for picker + slide-to-toggle
+2. **M.Fan / M.Light** — paired card, fan speed + brightness sliders
+3. **Lght E / Lght W** — paired card, no sliders (E on left, W on right)
+4. **Attic1 / Attic2** — paired card; expand-down timers (delay-on, off-timer)
+5. **LD Floor** — single card
+6. **Water Feature** — single card, auto-off countdown timer (WeMo)
+7. **Living Fire** — single card, 90-min auto-off countdown
+8. **Master Fire** — single card, 90-min auto-off countdown
+9. **Garage** — single card, slide-to-activate (prevents pocket-dial)
 
 ---
 
 ## PWA / Service Worker
 - Cache key is `"haus-vN"` in `sw.js` — **bump N whenever any static file changes** so phones receive the updated files
-- Current version: `haus-v22`
+- Current version: `haus-v23`
 - Keep the version label in `index.html` (`#app-version`) in sync with the cache key — it's shown in the top bar so you can verify which build a phone is running.
 - Network-first strategy for app shell (always fetches from server when online, falls back to cache)
 - Never caches `/image`, `/api/*`, or `/ws`
@@ -249,10 +270,11 @@ POST /api/light/brightness          { "percent": 0-100 }
 POST /api/zwave/{device_key}/power  { "on": true|false }
 POST /api/attic/delay-on            { "armed", "fans": [...], "duration_seconds" }
 POST /api/attic/off-timer           { "armed", "duration_seconds" }
+POST /api/lock/{lock_key}           { "locked": true|false }
 POST /api/wemo/{device_name}/power  { "on": true|false }
 ```
 
-State snapshot keys: `fan`, `zwave`, `attic_timers`, `wemo`.
+State snapshot keys: `fan`, `zwave`, `attic_timers`, `locks`, `wemo`.
 
 Z-Wave state is push-based (kept live by driver events). Other device types are cached in-memory and re-polled from hardware every 60 seconds. On WebSocket connect (i.e. app load) Z-Wave state is refreshed if the cache is older than 3 seconds — this catches switches flipped externally (physical remote, etc.). Other device types serve cached state on connect.
 

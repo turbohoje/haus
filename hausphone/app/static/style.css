@@ -382,6 +382,89 @@ html, body {
   flex-shrink: 0;
 }
 .status-dot.on { background: var(--on); }
+.status-dot.alert { background: var(--danger); }
+
+/* ── Door locks ── */
+.locks-summary {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--on);
+  white-space: nowrap;
+}
+.locks-summary.alert { color: var(--danger); }
+
+.locks-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 16px 14px;
+}
+.lock-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+.lock-chip-icon { font-size: 1.05rem; line-height: 1; flex-shrink: 0; }
+.lock-chip-name {
+  font-size: 0.92rem;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lock-chip-state {
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.lock-chip.unlocked { border-color: var(--danger); background: #2a1414; }
+.lock-chip.unlocked .lock-chip-state { color: var(--danger); }
+.lock-chip.unknown  { border-color: var(--warn); background: #2a2314; }
+.lock-chip.unknown .lock-chip-state { color: var(--warn); }
+
+.lock-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.lock-pick {
+  height: 46px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--text-dim);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lock-pick.selected {
+  border-color: var(--accent);
+  color: #fff;
+  background: #14202e;
+}
+.lock-actuate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+.lock-actuate-label {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+.slide-activate[hidden] { display: none; }
+.lock-slide { margin-bottom: 4px; }
 
 /* ── Cert install prompt ── */
 #cert-bar {

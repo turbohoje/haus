@@ -128,6 +128,7 @@ def _collect_state() -> dict:
         "fan": fan.get_state(),
         "zwave": zwave.get_state(),
         "attic_timers": zwave.get_attic_timers(),
+        "locks": zwave.get_locks_state(),
         "wemo": wemo.get_state(),
     }
 
@@ -175,6 +176,16 @@ async def light_brightness(body: dict = Body(...)):
 async def zwave_power(device_key: str, body: dict = Body(...)):
     state = await zwave.set_power(device_key, bool(body.get("on")))
     await broadcast({"type": "state", "data": {"zwave": state}})
+    return state
+
+
+# --------------------------------------------------------------------------
+# Door locks (S0-secured Allegion deadbolts)
+# --------------------------------------------------------------------------
+@app.post("/api/lock/{lock_key}")
+async def lock_set(lock_key: str, body: dict = Body(...)):
+    state = await zwave.set_lock(lock_key, bool(body.get("locked")))
+    await broadcast({"type": "state", "data": {"locks": state}})
     return state
 
 

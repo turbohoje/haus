@@ -31,6 +31,7 @@ ZWAVE_WS_URL = os.environ.get("ZWAVE_WS_URL", "ws://127.0.0.1:3001")
 BINARY_SWITCH_CC = 37    # 0x25
 BARRIER_CC = 102         # 0x66 — garage door opener
 CENTRAL_SCENE_CC = 91    # 0x5B — remote button presses (WallMote, node 13)
+DOOR_LOCK_CC = 98        # 0x62 — Allegion deadbolts (S0-secured)
 
 # key -> device. node_id/endpoint from the zwave-js migration
 # (see zwavejs/MIGRATION_CHECKLIST.md). `kind` defaults to "switch"; "barrier" is
@@ -48,6 +49,20 @@ DEVICES = {
     # doesn't respond to a toggle, switch this to endpoint 2.
     "m_fire":     {"node_id": 10, "endpoint": 1, "label": "Master Fire", "auto_off_minutes": 90},
 }
+
+# Door locks (Allegion BE469, S0-secured). Kept separate from DEVICES because they
+# aren't on/off switches: read Door Lock CC `currentMode` (255 Secured / 0 Unsecured /
+# 254 Unknown), write `targetMode`. Dict order is the card's display order. Node 4
+# (Back Door) is included but its interview is incomplete, so it reports "unknown"
+# until it starts responding.
+LOCKS = {
+    "front_door":   {"node_id": 19, "label": "Front"},
+    "back_door":    {"node_id": 4,  "label": "Back"},
+    "garage_lock":  {"node_id": 5,  "label": "Garage"},
+    "balcony_lock": {"node_id": 7,  "label": "Balcony"},
+}
+DOOR_LOCK_SECURED = 255
+DOOR_LOCK_UNSECURED = 0
 
 
 # ── per-device value-id / on-state helpers ───────────────────────────────────
@@ -87,9 +102,13 @@ for _k, _d in DEVICES.items():
     _cc, _ep, _prop, _pk = _read_vid(_d)
     _read_index[(_d["node_id"], _ep, _cc, _prop)] = _k
 
+# node_id -> lock key, for routing Door Lock currentMode events
+_lock_by_node = {_lk["node_id"]: _k for _k, _lk in LOCKS.items()}
+
 
 # ── module state ─────────────────────────────────────────────────────────────
 _state: dict = {k: None for k in DEVICES}
+_lock_state: dict = {k: "unknown" for k in LOCKS}
 _timer_end: dict = {k: None for k in DEVICES}
 _timers: dict = {}          # device_key -> asyncio.Task
 _last_refresh: float = 0.0
@@ -175,6 +194,7 @@ def _hydrate(state):
             _values[(nid, v.get("endpoint", 0) or 0, v.get("commandClass"),
                      v.get("property"), v.get("propertyKey"))] = v.get("value")
     _recompute_state()
+    _recompute_locks()
 
 
 def _recompute_state():
@@ -182,6 +202,41 @@ def _recompute_state():
         cc, ep, prop, pk = _read_vid(dev)
         raw = _values.get((dev["node_id"], ep, cc, prop, pk))
         _state[k] = _raw_to_on(dev, raw)
+
+
+# ── door locks ───────────────────────────────────────────────────────────────
+def _lock_status(raw):
+    """Door Lock CC currentMode → 'locked' | 'unlocked' | 'unknown'."""
+    if raw is None or raw == 254:
+        return "unknown"
+    if raw == DOOR_LOCK_SECURED:
+        return "locked"
+    return "unlocked"          # 0/1/16/17/32/33 — any unsecured variant
+
+
+def _recompute_locks():
+    for k, lk in LOCKS.items():
+        raw = _values.get((lk["node_id"], 0, DOOR_LOCK_CC, "currentMode", None))
+        _lock_state[k] = _lock_status(raw)
+
+
+def get_locks_state() -> dict:
+    return {k: {"label": LOCKS[k]["label"], "status": _lock_state[k]} for k in LOCKS}
+
+
+async def set_lock(lock_key: str, locked: bool) -> dict:
+    lk = LOCKS.get(lock_key)
+    if lk is None:
+        raise ValueError(f"Unknown lock: {lock_key}")
+    await _send_command({
+        "command": "node.set_value",
+        "nodeId": lk["node_id"],
+        "valueId": {"commandClass": DOOR_LOCK_CC, "endpoint": 0, "property": "targetMode"},
+        "value": DOOR_LOCK_SECURED if locked else DOOR_LOCK_UNSECURED,
+    })
+    # optimistic; the real state is confirmed by the currentMode notification
+    _lock_state[lock_key] = "locked" if locked else "unlocked"
+    return get_locks_state()
 
 
 async def _listen_loop(ws):
@@ -231,6 +286,15 @@ def _handle_event(ev):
     # not device state — hand them to the scene engine and stop.
     if cc == CENTRAL_SCENE_CC and prop == "scene":
         _handle_scene_notification(nid, pk, new)
+        return
+
+    # Door lock state change → update that lock and push to clients.
+    if cc == DOOR_LOCK_CC and prop == "currentMode":
+        lkey = _lock_by_node.get(nid)
+        if lkey is not None:
+            _lock_state[lkey] = _lock_status(new)
+            if _broadcast_cb is not None:
+                asyncio.create_task(_broadcast_cb({"locks": get_locks_state()}))
         return
 
     key = _read_index.get((nid, ep, cc, prop))
@@ -286,6 +350,7 @@ async def refresh_state() -> dict:
         log.warning("Z-Wave refresh connect error: %s", e)
         return _build_state()
     _recompute_state()
+    _recompute_locks()
     for key in DEVICES:
         if _state.get(key) is False and _timer_end.get(key) is not None:
             _cancel_timer(key)

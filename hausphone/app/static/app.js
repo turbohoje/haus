@@ -3,7 +3,7 @@
 const SERVER = `${location.protocol}//${location.host}`;
 let ws = null;
 let wsRetryMs = 1000;
-let state = { fan: {}, zwave: {}, wemo: {}, attic_timers: null };
+let state = { fan: {}, zwave: {}, wemo: {}, attic_timers: null, locks: {} };
 let timerInterval = null;
 let deferredInstallPrompt = null;
 
@@ -12,6 +12,7 @@ const APP_VERSION = document.getElementById("app-version").textContent.trim();
 const PREFS_KEY = "haus-prefs";
 const ELEMENTS = [
   { key: "camera",        label: "Camera" },
+  { key: "door_locks",    label: "Door Locks" },
   { key: "m_fan_light",   label: "M.Fan / M.Light" },
   { key: "lights_e_w",    label: "Lght E / Lght W" },
   { key: "attics",        label: "Attic1 / Attic2" },
@@ -202,6 +203,11 @@ function mergeState(data) {
       state.wemo[k] = Object.assign(state.wemo[k] || {}, v);
     }
   }
+  if (data.locks) {
+    for (const [k, v] of Object.entries(data.locks)) {
+      state.locks[k] = Object.assign(state.locks[k] || {}, v);
+    }
+  }
   if (data.attic_timers) {
     state.attic_timers = data.attic_timers;
   }
@@ -352,6 +358,152 @@ garageSlide?.addEventListener("change", () => {
     resetGarageSlide();
   }
 });
+
+// ── Door locks ─────────────────────────────────────────────────────────────
+const LOCK_ICON = { locked: "\u{1F512}", unlocked: "\u{1F513}", unknown: "❓" };
+const LOCK_WORD = { locked: "LOCKED", unlocked: "UNLOCKED", unknown: "UNKNOWN" };
+
+const locksGrid        = document.getElementById("locks-grid");
+const lockPicker       = document.getElementById("lock-picker");
+const locksExpand      = document.getElementById("locks-expand");
+const locksDetail      = document.getElementById("locks-detail");
+const lockSlideWrap    = document.getElementById("lock-slide-wrap");
+const lockSlide        = document.getElementById("lock-slide");
+const lockActuateLabel = document.getElementById("lock-actuate-label");
+const locksSummary     = document.getElementById("locks-summary");
+const locksDot         = document.getElementById("locks-dot");
+
+const LOCK_ARM_THRESHOLD = 90;
+let selectedLock = null;
+let lockFiring = false;
+let locksBuilt = false;
+
+locksExpand?.addEventListener("click", () => {
+  locksDetail.classList.toggle("open");
+  locksExpand.classList.toggle("open");
+});
+
+// Build the per-door chips (status) + picker buttons once, when state arrives.
+function buildLocksUI() {
+  const keys = Object.keys(state.locks);
+  if (locksBuilt || keys.length === 0) return;
+  locksGrid.innerHTML = "";
+  lockPicker.innerHTML = "";
+  for (const key of keys) {
+    const label = state.locks[key].label || key;
+
+    const chip = document.createElement("div");
+    chip.className = "lock-chip";
+    chip.dataset.lock = key;
+    chip.innerHTML =
+      '<span class="lock-chip-icon"></span>' +
+      '<span class="lock-chip-name"></span>' +
+      '<span class="lock-chip-state"></span>';
+    chip.querySelector(".lock-chip-name").textContent = label;
+    locksGrid.appendChild(chip);
+
+    const pick = document.createElement("button");
+    pick.className = "lock-pick";
+    pick.dataset.lock = key;
+    pick.textContent = label;
+    pick.addEventListener("click", () => selectLock(key));
+    lockPicker.appendChild(pick);
+  }
+  locksBuilt = true;
+}
+
+function selectLock(key) {
+  selectedLock = key;
+  lockPicker.querySelectorAll(".lock-pick").forEach(b => {
+    b.classList.toggle("selected", b.dataset.lock === key);
+  });
+  lockSlideWrap.hidden = false;
+  resetLockSlide();
+  updateLockActuateLabel();
+}
+
+function updateLockActuateLabel() {
+  if (!selectedLock) {
+    lockActuateLabel.textContent = "Select a door above";
+    return;
+  }
+  const l = state.locks[selectedLock];
+  const name = l?.label || selectedLock;
+  const status = l?.status || "unknown";
+  const action = status === "locked" ? "slide to unlock" : "slide to lock";
+  lockActuateLabel.textContent = `${name} is ${LOCK_WORD[status]} · ${action}`;
+}
+
+function resetLockSlide() {
+  if (!lockSlide) return;
+  lockSlide.value = 0;
+  lockSlideWrap.classList.remove("armed");
+}
+
+lockSlide?.addEventListener("input", () => {
+  lockSlideWrap.classList.toggle("armed", parseInt(lockSlide.value) >= LOCK_ARM_THRESHOLD);
+});
+
+async function fireLock() {
+  if (!selectedLock || lockFiring) return;
+  lockFiring = true;
+  const cur = state.locks[selectedLock]?.status;
+  // slide toggles: locked -> unlock; unlocked/unknown -> lock (securing is the safe default)
+  const locked = cur !== "locked";
+  try {
+    mergeState({ locks: await post(`/api/lock/${selectedLock}`, { locked }) });
+    renderAll();
+  } catch (e) {
+    console.error(e);
+  } finally {
+    lockFiring = false;
+    resetLockSlide();
+  }
+}
+
+// `change` fires on release for range inputs; fire if the user let go past the arm point.
+lockSlide?.addEventListener("change", () => {
+  if (parseInt(lockSlide.value) >= LOCK_ARM_THRESHOLD) fireLock();
+  else resetLockSlide();
+});
+
+function renderLocks() {
+  buildLocksUI();
+  const locks = state.locks;
+  let unlocked = 0, unknown = 0, total = 0;
+  for (const [key, l] of Object.entries(locks)) {
+    total++;
+    const status = l.status || "unknown";
+    if (status === "unlocked") unlocked++;
+    else if (status !== "locked") unknown++;
+    const chip = locksGrid.querySelector(`.lock-chip[data-lock="${key}"]`);
+    if (chip) {
+      chip.classList.remove("locked", "unlocked", "unknown");
+      chip.classList.add(status);
+      chip.querySelector(".lock-chip-icon").textContent = LOCK_ICON[status];
+      chip.querySelector(".lock-chip-state").textContent = LOCK_WORD[status];
+    }
+  }
+  const alert = unlocked + unknown > 0;
+  if (locksSummary) {
+    if (!total) {
+      locksSummary.textContent = "";
+    } else if (!alert) {
+      locksSummary.textContent = "All secured";
+    } else {
+      const parts = [];
+      if (unlocked) parts.push(`${unlocked} unlocked`);
+      if (unknown) parts.push(`${unknown} unknown`);
+      locksSummary.textContent = parts.join(" · ");
+    }
+    locksSummary.classList.toggle("alert", alert);
+  }
+  if (locksDot) {
+    locksDot.classList.toggle("on", total > 0 && !alert);
+    locksDot.classList.toggle("alert", alert);
+  }
+  updateLockActuateLabel();
+}
 
 // ── WeMo ──────────────────────────────────────────────────────────────────
 function bindWemo(deviceName, btnId, badgeId) {
@@ -573,6 +725,7 @@ function renderAll() {
   setDot(document.getElementById("wemo-water-dot"), wf?.on);
   updateTimers();
   renderAtticTimers();
+  renderLocks();
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
