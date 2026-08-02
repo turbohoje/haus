@@ -20,8 +20,10 @@ current_file_directory = os.path.dirname(os.path.abspath(__file__))
 #   ladyden     -> Lady Den ZW100 node 9  (was 236)
 #   master      -> Master ZW100   node 12 (was 169)
 #   living      -> Living Room ZW100 node 3 (was 246)
+#   attic       -> Attic Sensor ZSE40 node 15 (reports °F, converted below)
 ZWAVE_WS_URL = "ws://127.0.0.1:3001"
-TEMP_NODES = {"oat": 8, "basement": 21, "ladyden": 9, "master": 12, "living": 3}
+TEMP_NODES = {"oat": 8, "basement": 21, "ladyden": 9, "master": 12, "living": 3,
+              "attic": 15}
 
 def _fetch_zwave_temps_c():
     """Read Air temperature for TEMP_NODES from zwave-js in one WS round-trip.
@@ -121,6 +123,7 @@ basement_now_txt = "{:4.1f}".format(_temps["basement"]) if "basement" in _temps 
 ladyden_now_txt  = "{:4.1f}".format(_temps["ladyden"])  if "ladyden"  in _temps else "-nf-"
 master_now_txt   = "{:4.1f}".format(_temps["master"])   if "master"   in _temps else "-nf-"
 living_now_txt   = "{:4.1f}".format(_temps["living"])   if "living"   in _temps else "-nf-"
+attic_now_txt    = "{:4.1f}".format(_temps["attic"])    if "attic"    in _temps else "-nf-"
 
 
 content = fetch_html(url)
@@ -205,9 +208,10 @@ print(f"{tomorrow_txt}:{tom_c}°C {tomorrow_f}°F {tom_p}%", file=wx_hour)
 #print("AQ:" + str(aqi_text) + "/" + str(aqi) + " L:"+ladyden_now_txt+" B:"+basement_now_txt)
 with open(current_file_directory+'/center_wx.txt', 'w') as file:
     print(f"{now_cs}°C {now_f}°F", file=file)
-    print("AQ:" + str(aqi_text) + "/" + str(aqi), file=file ) #+ " L:"+ladyden_now_txt+" B:"+basement_now_txt, file=file)
-    print("Ld:"+ladyden_now_txt + "   Ma:"+master_now_txt, file=file)
-    print("Lv:"+living_now_txt  + "   Ba:"+basement_now_txt, file=file)
+    aq_txt = "AQ:" + str(aqi_text) + "/" + str(aqi)
+    print(f"{aq_txt:<11}At:"+attic_now_txt, file=file)
+    print("Ld:"+ladyden_now_txt + "    Ma:"+master_now_txt, file=file)
+    print("Lv:"+living_now_txt  + "    Ba:"+basement_now_txt, file=file)
 
 
 with open(current_file_directory+'/forecast.pkl', 'rb') as file:

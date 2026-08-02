@@ -15,8 +15,14 @@ for an interface-compatible `zwave.py`.
 
 ```
 Zooz 800 stick ──USB──> zwave-js-ui ──WS(:3001)──> hausphone (app/devices/zwave.py) ──> PWA
-                          (:8091 UI)
+                          (:8091 UI)   └────────> ffmpeg/fetch_wx.py (sensor temps, cron)
 ```
+
+hausphone is not the only WS consumer: **`ffmpeg/fetch_wx.py`** also connects to `:3001`
+every 5 min to read Air temperature (Multilevel Sensor CC 49) for the display overlay —
+its own raw `aiohttp` client, not `zwave-js-server-python`. Node ids and the °F/°C
+per-sensor unit gotcha are documented in `ffmpeg/README.md`. Renumbering or re-including
+a **sensor** node breaks that overlay too, not just the PWA.
 
 ---
 

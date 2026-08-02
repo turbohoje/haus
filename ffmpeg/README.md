@@ -39,6 +39,54 @@ literally). These files are produced by other processes/scripts:
 The render loop only reads these files. If a file is stale or empty the overlay
 just shows the old/blank text — it never blocks the loop.
 
+## Weather + indoor temps (`fetch_wx.py` → `center_wx.txt`)
+
+Run from cron every 5 minutes (`*/5 * * * * fetch_wx.py`), **not** from the render
+loop. It scrapes wunderground for the forecast/AQI and reads indoor temperatures
+from **zwave-js** over its WebSocket (`ws://127.0.0.1:3001`), then writes
+`center_wx.txt` (appended to `center.txt` by the loop) and the two
+`wx_forecast_*.txt` files.
+
+All temperature nodes are pulled in **one** WS round-trip: connect →
+`set_api_schema` → `start_listening`, then read Air temperature (Multilevel
+Sensor CC 49) out of the returned state dump. `TEMP_NODES` maps name → node id:
+
+| Name       | Node | Device            | Reports |
+|------------|------|-------------------|---------|
+| `oat`      | 8    | Patio ZSE40       | °F      |
+| `living`   | 3    | Living Room ZW100 | °C      |
+| `ladyden`  | 9    | Lady Den ZW100    | °C      |
+| `master`   | 12   | Master ZW100      | °C      |
+| `basement` | 21   | Basement ZW100    | °C      |
+| `attic`    | 15   | Attic ZSE40       | °F      |
+
+**Unit gotcha:** the ZSE40s (patio, attic) report in **°F** while the ZW100s
+report **°C**. The reader checks each value's `metadata.unit` and converts °F →
+°C, so everything on screen is Celsius regardless of sensor type. Adding a
+sensor means checking its unit rather than assuming.
+
+Failure behavior: an unreachable node renders as `-nf-` in its slot, but a
+missing **outdoor** temp or a failed scrape exits non-zero *before* writing, so
+`center_wx.txt` keeps its previous contents and the overlay shows stale values
+rather than blanking.
+
+### Layout of `center_wx.txt`
+
+```
+26.1°C 79°F
+AQ:Mdrt/59 At:26.5
+Ld:27.1    Ma:25.7
+Lv:24.2    Ba:24.9
+```
+
+Alignment is hand-maintained with literal spaces in the `print()` calls: 4
+spaces between each room pair, and the AQ string padded to 11 chars (`{:<11}`)
+so `At:` lands in the same column as `Ma:`/`Ba:`. A long AQI string (e.g.
+`AQ:Unhl/159`) eats that padding and butts up against `At:`.
+
+Because the overlay is right-anchored (`x=w-tw-670`), `tw` is the width of the
+**widest line**, so lengthening any one line shifts the whole block left.
+
 ## Power overlay (`power.txt`)
 
 Live whole-home power comes from a local Xcel-meter Prometheus exporter at
