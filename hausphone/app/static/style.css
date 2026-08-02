@@ -552,6 +552,11 @@ html, body {
   font-weight: 600;
   color: var(--text);
 }
+#settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 #settings-close {
   background: none;
   border: none;
@@ -561,8 +566,23 @@ html, body {
   padding: 6px 10px;
   line-height: 1;
 }
+#settings-reorder {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 8px 14px;
+  line-height: 1;
+}
+#settings-reorder[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
 
-#settings-list {
+#settings-body {
   padding: var(--gap);
   display: flex;
   flex-direction: column;
@@ -570,6 +590,24 @@ html, body {
   overflow-y: auto;
   flex: 1;
 }
+#settings-pinned, #settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+/* Separates the pinned camera row from the orderable ones */
+#settings-list {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+#settings-hint {
+  display: none;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 4px 0;
+}
+#settings-body.reordering #settings-hint { display: block; }
 
 .settings-row {
   display: flex;
@@ -585,6 +623,36 @@ html, body {
   color: var(--text);
   flex: 1;
 }
+
+/* ── Reorder mode: switches give way to drag handles ── */
+.settings-handle {
+  display: none;
+  width: 44px;
+  margin-left: -8px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  color: var(--text-dim);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;         /* claim the gesture so the list doesn't scroll */
+  -webkit-user-select: none;
+  user-select: none;
+}
+#settings-body.reordering .settings-handle { display: flex; }
+#settings-body.reordering .settings-switch { display: none; }
+#settings-body.reordering .settings-row.pinned { opacity: 0.45; }
+
+.settings-row.dragging {
+  position: relative;
+  z-index: 5;
+  border-color: var(--accent);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  cursor: grabbing;
+}
+.settings-row.dragging .settings-handle { cursor: grabbing; color: var(--text); }
 
 /* iOS-style toggle switch */
 .settings-switch {

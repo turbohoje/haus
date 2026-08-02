@@ -52,12 +52,11 @@ DEVICES = {
 
 # Door locks (Allegion BE469, S0-secured). Kept separate from DEVICES because they
 # aren't on/off switches: read Door Lock CC `currentMode` (255 Secured / 0 Unsecured /
-# 254 Unknown), write `targetMode`. Dict order is the card's display order. Node 4
-# (Back Door) is included but its interview is incomplete, so it reports "unknown"
-# until it starts responding.
+# 254 Unknown), write `targetMode`. Dict order is the card's display order.
+# back_door is node 25 (re-included after a failed interview, so it's out of sequence).
 LOCKS = {
     "front_door":   {"node_id": 19, "label": "Front"},
-    "back_door":    {"node_id": 4,  "label": "Back"},
+    "back_door":    {"node_id": 25, "label": "Back"},
     "garage_lock":  {"node_id": 5,  "label": "Garage"},
     "balcony_lock": {"node_id": 7,  "label": "Balcony"},
 }

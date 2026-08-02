@@ -9,9 +9,19 @@ One-hand operable on phone; large well-spaced controls.
 
 ## Host / Deployment
 - **Target host:** Intel NUC at `10.22.14.2`
-- **Port:** `3000`
-- **Deployment:** Docker container (`restart: unless-stopped`)
+- **Port:** `3000` — **HTTPS only** in the container (see TLS below); plain `http://…:3000` is refused
+- **Deployment:** Docker container (`restart: unless-stopped`), `network_mode: host`
 - **Old service:** `ffmpeg-webserver.service` — keep old code in `ffmpeg/webserver/`
+
+### TLS / certificate
+`entrypoint.sh` generates a self-signed cert into the `hausphone-certs` volume on first boot
+(`CN=10.22.14.2`, SAN `IP:10.22.14.2,IP:127.0.0.1`, 10 years) and runs uvicorn with
+`--ssl-keyfile/--ssl-certfile`. `GET /cert.crt` serves it so phones can install it and trust the
+site — required for the PWA install prompt (see the cert bar in `index.html`).
+Probing from the NUC therefore needs both the scheme and `-k`:
+```bash
+curl -sk https://127.0.0.1:3000/ | grep -o 'app-version">v[0-9]*'   # which build is live
+```
 
 ### Running via Docker (production)
 ```bash
@@ -19,15 +29,29 @@ docker compose up -d --build
 docker logs hausphone          # check startup
 docker compose down            # stop
 ```
+`--build` is **not optional for front-end changes**: the Dockerfile does `COPY app/ ./app/`, and only
+`imgproc` and `certs` are bind-mounted — the static files are baked into the image, so a bare
+`restart` keeps serving the old `app.js`/`style.css`.
 
 ### Running locally (dev/test)
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 IMAGE_PATH=/home/turbohoje/haus/ffmpeg/imgproc/output.jpg \
-  .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 3000
+  .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 3005
 ```
-If `IMAGE_PATH` doesn't exist the file watcher is skipped and a placeholder image is served — that's fine for dev.
+- If `IMAGE_PATH` doesn't exist the file watcher is skipped and a placeholder image is served — that's fine for dev.
+- Local runs are **plain HTTP** (no `--ssl-*` flags) — use `http://` when probing them.
+- Use a **spare port**: the container holds `:3000` on the host network, so a dev run on 3000 collides.
+- Startup takes **~15–20 s** before the port answers — device backends (fan, zwave-js, WeMo) connect
+  during FastAPI's lifespan startup. Curling too early just gets connection-refused; it isn't a crash.
+  A dev run does connect to the real fan/Z-Wave, so it reads live state.
+
+### Checking front-end JS
+There is **no `node` on the NUC**. Syntax-check via the zwave-js image, which already has one:
+```bash
+docker run --rm --entrypoint node -v $PWD/app/static:/s:ro zwavejs/zwave-js-ui:latest --check /s/app.js
+```
 
 ---
 
@@ -144,15 +168,15 @@ switches.
 | Key | Node | Location |
 |-----|------|----------|
 | `front_door` | 19 | Drawing Room |
-| `back_door` | 4 | Living Room |
+| `back_door` | 25 | Living Room |
 | `garage_lock` | 5 | Garage |
 | `balcony_lock` | 7 | Master |
 
 UI: the first controls card (`data-element="door_locks"`) shows all four states at a glance —
 unlocked/unknown are highlighted for a nighttime "is everything locked?" check. Expanding reveals a
 door picker + slide-to-toggle (slide both directions, so no accidental single-tap actuation).
-**Node 4 (Back Door)** has an incomplete interview: it reports `unknown` and control is best-effort
-until it starts responding to Door Lock CC.
+Back Door was re-included as **node 25** after its original interview failed on node 4; it now
+interviews Complete and reports state normally.
 
 ### WeMo Smart Plugs
 - Controlled via `pywemo` direct-by-IP
@@ -165,6 +189,11 @@ until it starts responding to Door Lock CC.
 device = pywemo.discovery.device_from_description(f"http://{ip}:49153/setup.xml")
 ```
 Discovery takes ~1 second per device; always call via `loop.run_in_executor`.
+
+If a plug is unplugged or off Wi-Fi, startup logs a multi-frame `pywemo.discovery ERROR Failed to
+fetch description …` traceback ending in `ConnectTimeoutError` and stalls ~10 s on that device
+(urllib3 connect timeout). That's the plug being unreachable, not an app fault — confirm with
+`ping -c 2 10.22.14.100`. The rest of the app starts normally; only that card is dead.
 
 #### `wemo_config.json` schema
 ```json
@@ -218,7 +247,11 @@ Cards use a dark surface with rounded corners. There are two card patterns:
 </div>
 ```
 
-### Current card order (top to bottom)
+### Default card order (top to bottom)
+The camera is pinned above `#controls` and is never reordered. Everything below is the
+**default** order — each phone can reorder the cards from Settings (see below), and the
+resulting order is stored per device in `localStorage`.
+
 1. **Locks** — door-lock inventory; all four states shown, expand for picker + slide-to-toggle
 2. **M.Fan / M.Light** — paired card, fan speed + brightness sliders
 3. **Lght E / Lght W** — paired card, no sliders (E on left, W on right)
@@ -229,11 +262,30 @@ Cards use a dark surface with rounded corners. There are two card patterns:
 8. **Master Fire** — single card, 90-min auto-off countdown
 9. **Garage** — single card, slide-to-activate (prevents pocket-dial)
 
+### Settings overlay (gear icon, top bar)
+Per-device prefs in `localStorage` under `haus-prefs`, driven by the `ELEMENTS` list in `app.js`:
+
+```js
+{ schema: 2, version: "v24", elements: { garage: true, ... }, order: ["door_locks", ...] }
+```
+
+- **Show/hide** — each row has a switch; `applyPrefs()` sets `display` on the matching `[data-element]` node.
+- **Reorder** — the header's **Reorder** button toggles `.reordering` on `#settings-body`, which swaps
+  the switches for drag handles. Dragging a handle swaps rows in the DOM as the finger crosses a
+  neighbour's midpoint; on release the order is saved and `applyPrefs()` re-appends the cards to
+  `#controls` in that order. Handles are `touch-action: none` so a drag doesn't scroll the list.
+- **Camera** is `pinned: true` — it renders in `#settings-pinned` above the divider with a switch but
+  no handle, since `#camera-wrap` lives outside `#controls`.
+- `PREFS_SCHEMA` is **independent of `APP_VERSION`** — bump it only when the prefs shape changes
+  (that wipes saved prefs). A routine `vN` bump no longer resets toggles or card order.
+- To add a card: add an `ELEMENTS` entry + a matching `data-element` attribute. It backfills as
+  enabled at the bottom of existing saved orders.
+
 ---
 
 ## PWA / Service Worker
 - Cache key is `"haus-vN"` in `sw.js` — **bump N whenever any static file changes** so phones receive the updated files
-- Current version: `haus-v23`
+- Current version: `haus-v24`
 - Keep the version label in `index.html` (`#app-version`) in sync with the cache key — it's shown in the top bar so you can verify which build a phone is running.
 - Network-first strategy for app shell (always fetches from server when online, falls back to cache)
 - Never caches `/image`, `/api/*`, or `/ws`

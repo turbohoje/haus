@@ -10,14 +10,14 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>Haus</title>
-  <link rel="stylesheet" href="/static/style.css?v=23">
+  <link rel="stylesheet" href="/static/style.css?v=24">
 </head>
 <body>
 
   <!-- ── Top bar (status-bar safe area + version) ── -->
   <div id="top-bar">
     <button id="settings-gear" aria-label="Settings">&#9881;</button>
-    <span id="app-version">v23</span>
+    <span id="app-version">v24</span>
   </div>
 
   <!-- ── Live camera ── -->
@@ -240,11 +240,18 @@
   <div id="settings-overlay">
     <div id="settings-header">
       <span id="settings-title">Settings</span>
-      <button id="settings-close" aria-label="Close">&#x2715;</button>
+      <div id="settings-actions">
+        <button id="settings-reorder" aria-pressed="false">Reorder</button>
+        <button id="settings-close" aria-label="Close">&#x2715;</button>
+      </div>
     </div>
-    <div id="settings-list"></div>
+    <div id="settings-body">
+      <div id="settings-pinned"></div>
+      <div id="settings-list"></div>
+      <div id="settings-hint">Drag the handles to set card order.</div>
+    </div>
   </div>
 
-  <script src="/static/app.js?v=23"></script>
+  <script src="/static/app.js?v=24"></script>
 </body>
 </html>

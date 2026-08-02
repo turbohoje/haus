@@ -10,8 +10,11 @@ let deferredInstallPrompt = null;
 // ── Settings (per-device prefs in localStorage) ───────────────────────────
 const APP_VERSION = document.getElementById("app-version").textContent.trim();
 const PREFS_KEY = "haus-prefs";
+// Bumped only when the prefs shape changes — deliberately independent of
+// APP_VERSION so a routine deploy doesn't wipe toggles and card order.
+const PREFS_SCHEMA = 2;
 const ELEMENTS = [
-  { key: "camera",        label: "Camera" },
+  { key: "camera",        label: "Camera", pinned: true },  // always first; not orderable
   { key: "door_locks",    label: "Door Locks" },
   { key: "m_fan_light",   label: "M.Fan / M.Light" },
   { key: "lights_e_w",    label: "Lght E / Lght W" },
@@ -22,11 +25,17 @@ const ELEMENTS = [
   { key: "m_fire",        label: "Master Fire" },
   { key: "garage",        label: "Garage" },
 ];
+const ORDERABLE = ELEMENTS.filter(el => !el.pinned);
 
 function defaultPrefs() {
   const elements = {};
   for (const el of ELEMENTS) elements[el.key] = true;
-  return { version: APP_VERSION, elements };
+  return {
+    schema: PREFS_SCHEMA,
+    version: APP_VERSION,
+    elements,
+    order: ORDERABLE.map(el => el.key),
+  };
 }
 
 function loadPrefs() {
@@ -34,12 +43,19 @@ function loadPrefs() {
     const raw = localStorage.getItem(PREFS_KEY);
     if (!raw) return defaultPrefs();
     const parsed = JSON.parse(raw);
-    // Abandon prefs on version change — breaking changes are not migrated yet.
-    if (parsed.version !== APP_VERSION) return defaultPrefs();
+    // Abandon prefs only when their shape changes — not on every app version.
+    if (parsed.schema !== PREFS_SCHEMA) return defaultPrefs();
+    parsed.version = APP_VERSION;
     // Backfill any new elements added after prefs were saved.
     for (const el of ELEMENTS) {
       if (!(el.key in parsed.elements)) parsed.elements[el.key] = true;
     }
+    // Drop retired keys from the saved order; new ones land at the bottom.
+    const order = (parsed.order || []).filter(k => ORDERABLE.some(el => el.key === k));
+    for (const el of ORDERABLE) {
+      if (!order.includes(el.key)) order.push(el.key);
+    }
+    parsed.order = order;
     return parsed;
   } catch {
     return defaultPrefs();
@@ -51,6 +67,12 @@ function savePrefs(p) {
 }
 
 function applyPrefs(p) {
+  // Re-append cards in pref order (camera is outside #controls, so it stays put).
+  const controls = document.getElementById("controls");
+  for (const key of p.order) {
+    const node = controls.querySelector(`[data-element="${key}"]`);
+    if (node) controls.appendChild(node);
+  }
   for (const el of ELEMENTS) {
     const node = document.querySelector(`[data-element="${el.key}"]`);
     if (!node) continue;
@@ -58,29 +80,102 @@ function applyPrefs(p) {
   }
 }
 
+function settingsRow(el, p) {
+  const row = document.createElement("div");
+  row.className = el.pinned ? "settings-row pinned" : "settings-row";
+  row.dataset.prefKey = el.key;
+  row.innerHTML = `
+    <span class="settings-handle" aria-hidden="true">${el.pinned ? "" : "&#9776;"}</span>
+    <span class="settings-label"></span>
+    <label class="settings-switch">
+      <input type="checkbox" ${p.elements[el.key] ? "checked" : ""}>
+      <span class="settings-switch-slider"></span>
+    </label>`;
+  row.querySelector(".settings-label").textContent = el.label;
+  row.querySelector("input").addEventListener("change", e => {
+    p.elements[el.key] = e.target.checked;
+    savePrefs(p);
+    applyPrefs(p);
+  });
+  if (!el.pinned) {
+    row.querySelector(".settings-handle")
+       .addEventListener("pointerdown", e => startDrag(e, row, p));
+  }
+  return row;
+}
+
 function renderSettings(p) {
+  const pinned = document.getElementById("settings-pinned");
   const list = document.getElementById("settings-list");
+  pinned.innerHTML = "";
   list.innerHTML = "";
   for (const el of ELEMENTS) {
-    const row = document.createElement("div");
-    row.className = "settings-row";
-    const checked = p.elements[el.key] ? "checked" : "";
-    row.innerHTML = `
-      <span class="settings-label"></span>
-      <label class="settings-switch">
-        <input type="checkbox" data-pref-key="${el.key}" ${checked}>
-        <span class="settings-switch-slider"></span>
-      </label>`;
-    row.querySelector(".settings-label").textContent = el.label;
-    list.appendChild(row);
+    if (el.pinned) pinned.appendChild(settingsRow(el, p));
   }
-  list.querySelectorAll('input[type="checkbox"]').forEach(input => {
-    input.addEventListener("change", () => {
-      p.elements[input.dataset.prefKey] = input.checked;
-      savePrefs(p);
-      applyPrefs(p);
-    });
-  });
+  for (const key of p.order) {
+    const el = ORDERABLE.find(e => e.key === key);
+    if (el) list.appendChild(settingsRow(el, p));
+  }
+}
+
+// ── Drag-to-reorder ───────────────────────────────────────────────────────
+// Rows are swapped in the DOM as the finger crosses a neighbour's midpoint;
+// `startY` is rebased by the same distance each swap so the dragged row keeps
+// tracking the finger. Order is persisted on release.
+let drag = null;
+
+function startDrag(e, row, p) {
+  if (!document.getElementById("settings-body").classList.contains("reordering")) return;
+  e.preventDefault();
+  const handle = e.currentTarget;
+  handle.setPointerCapture(e.pointerId);
+  handle.addEventListener("pointermove", dragMove);
+  handle.addEventListener("pointerup", endDrag);
+  handle.addEventListener("pointercancel", endDrag);
+  drag = { row, handle, startY: e.clientY, prefs: p };
+  row.classList.add("dragging");
+}
+
+function dragMove(e) {
+  if (!drag) return;
+  const row = drag.row;
+  const list = row.parentElement;
+  let dy = e.clientY - drag.startY;
+
+  // offsetTop is layout-based, so the row's own transform doesn't skew it.
+  const next = row.nextElementSibling;
+  const nextShift = next ? next.offsetTop - row.offsetTop : 0;
+  if (next && dy > nextShift / 2) {
+    list.insertBefore(next, row);
+    drag.startY += nextShift;
+    dy -= nextShift;
+  } else {
+    const prev = row.previousElementSibling;
+    const prevShift = prev ? row.offsetTop - prev.offsetTop : 0;
+    if (prev && dy < -prevShift / 2) {
+      list.insertBefore(row, prev);
+      drag.startY -= prevShift;
+      dy += prevShift;
+    }
+  }
+  row.style.transform = `translateY(${dy}px)`;
+}
+
+function endDrag(e) {
+  if (!drag) return;
+  const { row, handle, prefs } = drag;
+  handle.removeEventListener("pointermove", dragMove);
+  handle.removeEventListener("pointerup", endDrag);
+  handle.removeEventListener("pointercancel", endDrag);
+  if (handle.hasPointerCapture(e.pointerId)) handle.releasePointerCapture(e.pointerId);
+  row.classList.remove("dragging");
+  row.style.transform = "";
+  drag = null;
+
+  prefs.order = [...document.getElementById("settings-list").children]
+    .map(r => r.dataset.prefKey);
+  savePrefs(prefs);
+  applyPrefs(prefs);
 }
 
 const _prefs = loadPrefs();
@@ -88,11 +183,22 @@ savePrefs(_prefs);  // ensures version stamp is current
 applyPrefs(_prefs);
 renderSettings(_prefs);
 
+function setReorderMode(on) {
+  document.getElementById("settings-body").classList.toggle("reordering", on);
+  const btn = document.getElementById("settings-reorder");
+  btn.setAttribute("aria-pressed", String(on));
+  btn.textContent = on ? "Done" : "Reorder";
+}
+
 document.getElementById("settings-gear")?.addEventListener("click", () => {
   document.getElementById("settings-overlay").classList.add("visible");
 });
 document.getElementById("settings-close")?.addEventListener("click", () => {
   document.getElementById("settings-overlay").classList.remove("visible");
+  setReorderMode(false);
+});
+document.getElementById("settings-reorder")?.addEventListener("click", () => {
+  setReorderMode(!document.getElementById("settings-body").classList.contains("reordering"));
 });
 
 // ── DOM refs ──────────────────────────────────────────────────────────────
