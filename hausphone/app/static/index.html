@@ -10,14 +10,14 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>Haus</title>
-  <link rel="stylesheet" href="/static/style.css?v=24">
+  <link rel="stylesheet" href="/static/style.css?v=25">
 </head>
 <body>
 
   <!-- ── Top bar (status-bar safe area + version) ── -->
   <div id="top-bar">
     <button id="settings-gear" aria-label="Settings">&#9881;</button>
-    <span id="app-version">v24</span>
+    <span id="app-version">v25</span>
   </div>
 
   <!-- ── Live camera ── -->
@@ -209,12 +209,20 @@
       </div>
     </div>
 
-    <!-- Garage Door (slide to activate) -->
+    <!-- Garage Door (slide to activate; auto-closes 15 min after it opens) -->
     <div class="card" data-element="garage">
       <div class="card-header">
         <span class="status-dot" id="zwave-garage-dot"></span>
         <span class="card-label">Garage</span>
+        <span class="timer-badge" id="garage-auto-badge"></span>
         <span class="state-badge" id="zwave-garage-state">CLOSED</span>
+      </div>
+      <div class="garage-auto">
+        <span class="garage-auto-status" id="garage-auto-status"></span>
+        <label class="timer-fan-checkbox">
+          <input type="checkbox" id="garage-auto-disable">
+          <span>Disable</span>
+        </label>
       </div>
       <div class="slide-activate">
         <input type="range" id="garage-slide" min="0" max="100" value="0" aria-label="Slide to activate garage">
@@ -248,10 +256,21 @@
     <div id="settings-body">
       <div id="settings-pinned"></div>
       <div id="settings-list"></div>
+      <div id="settings-push">
+        <div class="settings-row">
+          <span class="settings-label">Garage alerts</span>
+          <label class="settings-switch">
+            <input type="checkbox" id="push-enable">
+            <span class="settings-switch-slider"></span>
+          </label>
+        </div>
+        <div id="push-status"></div>
+        <button id="push-test">Send test notification</button>
+      </div>
       <div id="settings-hint">Drag the handles to set card order.</div>
     </div>
   </div>
 
-  <script src="/static/app.js?v=24"></script>
+  <script src="/static/app.js?v=25"></script>
 </body>
 </html>

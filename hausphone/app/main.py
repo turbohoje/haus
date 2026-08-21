@@ -14,6 +14,7 @@ from starlette.responses import Response
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
+from app import push
 from app.devices import fan, wemo
 from app.devices import zwave
 
@@ -130,6 +131,7 @@ def _collect_state() -> dict:
         "attic_timers": zwave.get_attic_timers(),
         "locks": zwave.get_locks_state(),
         "wemo": wemo.get_state(),
+        "garage_auto": zwave.get_garage_auto(),
     }
 
 
@@ -215,6 +217,40 @@ async def attic_off_timer(body: dict = Body(...)):
 
 
 # --------------------------------------------------------------------------
+# Garage auto-close
+# --------------------------------------------------------------------------
+@app.post("/api/garage/auto-close")
+async def garage_auto_close(body: dict = Body(...)):
+    state = await zwave.set_garage_auto_close(bool(body.get("enabled")))
+    await broadcast({"type": "state", "data": {"garage_auto": state}})
+    return state
+
+
+# --------------------------------------------------------------------------
+# Web Push (garage alerts)
+# --------------------------------------------------------------------------
+@app.get("/api/push/key")
+async def push_key():
+    return {"available": push.available(), "key": push.public_key()}
+
+
+@app.post("/api/push/subscribe")
+async def push_subscribe(body: dict = Body(...)):
+    return {"count": push.add_subscription(body)}
+
+
+@app.post("/api/push/unsubscribe")
+async def push_unsubscribe(body: dict = Body(...)):
+    return {"count": push.remove_subscription(body.get("endpoint", ""))}
+
+
+@app.post("/api/push/test")
+async def push_test():
+    sent = await push.send("Haus test", "Push notifications are working.", "haus-test")
+    return {"sent": sent}
+
+
+# --------------------------------------------------------------------------
 # WeMo control
 # --------------------------------------------------------------------------
 @app.post("/api/wemo/{device_name}/power")
@@ -284,9 +320,12 @@ async def startup():
     _loop = asyncio.get_event_loop()
 
     wemo.load_config()
+    push.load()
 
     # Let zwave push state updates when its background timers fire
     zwave.register_broadcast(lambda data: broadcast({"type": "state", "data": data}))
+    # ...and raise a phone alert when garage auto-close gives up
+    zwave.register_notify(push.send)
 
     # Connect to fan (non-fatal if unavailable)
     try:

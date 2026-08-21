@@ -15,6 +15,10 @@ Command classes per device:
         Binary Switch (0x25) — read currentValue, write targetValue
   - garage door opener (Nortek NGD00Z):
         Barrier Operator (0x66) — read currentState (255=open), write targetState
+
+The garage also runs an auto-close watcher: once the door reports anything but
+fully closed it counts down 15 minutes, then makes up to two close attempts a
+minute apart before giving up (see "garage auto-close" below).
 """
 import asyncio
 import itertools
@@ -85,7 +89,10 @@ def _raw_to_on(dev, raw):
     if raw is None:
         return None
     if dev.get("kind") == "barrier":
-        return raw == 255                 # Barrier Operator: 255 = fully open
+        # Barrier Operator: 0 = fully closed. Everything else counts as open —
+        # 255 open, 254 opening, 252 closing, 253 stopped, 1-99 partly open.
+        # A door stopped half-way is exactly what auto-close is for.
+        return raw != 0
     return bool(raw)
 
 
@@ -112,6 +119,7 @@ _timer_end: dict = {k: None for k in DEVICES}
 _timers: dict = {}          # device_key -> asyncio.Task
 _last_refresh: float = 0.0
 _broadcast_cb = None
+_notify_cb = None
 
 # ── raw WS client handles ────────────────────────────────────────────────────
 _session = None             # aiohttp.ClientSession
@@ -127,6 +135,12 @@ def register_broadcast(cb):
     """main.py registers an async callback so push events broadcast state."""
     global _broadcast_cb
     _broadcast_cb = cb
+
+
+def register_notify(cb):
+    """main.py registers an async cb(title, body, tag) for user-facing alerts."""
+    global _notify_cb
+    _notify_cb = cb
 
 
 # ── connection lifecycle ─────────────────────────────────────────────────────
@@ -194,6 +208,7 @@ def _hydrate(state):
                      v.get("property"), v.get("propertyKey"))] = v.get("value")
     _recompute_state()
     _recompute_locks()
+    _sync_garage_auto()
 
 
 def _recompute_state():
@@ -306,8 +321,11 @@ def _handle_event(ev):
     if on is False and _timer_end.get(key) is not None:
         _cancel_timer(key)
         _timer_end[key] = None
+    if key == GARAGE_KEY:
+        _sync_garage_auto()
     if _broadcast_cb is not None:
-        asyncio.create_task(_broadcast_cb({"zwave": get_state()}))
+        asyncio.create_task(_broadcast_cb({"zwave": get_state(),
+                                           "garage_auto": get_garage_auto()}))
 
 
 async def _send_command(payload: dict):
@@ -354,6 +372,7 @@ async def refresh_state() -> dict:
         if _state.get(key) is False and _timer_end.get(key) is not None:
             _cancel_timer(key)
             _timer_end[key] = None
+    _sync_garage_auto()
     _last_refresh = time.monotonic()
     return _build_state()
 
@@ -375,7 +394,12 @@ async def set_power(device_key: str, on: bool) -> dict:
         "valueId": _write_vid(dev),
         "value": _on_to_write(dev, on),
     })
-    _state[device_key] = bool(on)
+    # Barriers report their real currentState as the door travels (opening →
+    # open, closing → closed), so let the value events set it. Writing it
+    # optimistically would show CLOSED for the ~15 s of travel, and would fool
+    # the auto-close verify check into thinking the door had already shut.
+    if dev.get("kind") != "barrier":
+        _state[device_key] = bool(on)
 
     auto_off = dev.get("auto_off_minutes")
     if on and auto_off:
@@ -410,6 +434,149 @@ def _schedule_auto_off(device_key: str, delay_seconds: float):
             log.warning("Z-Wave auto-off failed for %s: %s", device_key, e)
 
     _timers[device_key] = asyncio.create_task(_auto_off())
+
+
+# ── garage auto-close ────────────────────────────────────────────────────────
+# The garage is the one device where "left on" is a security problem, so it gets
+# a watcher instead of a plain auto-off timer: the moment the barrier reports
+# anything but fully closed we count down, then try to close it, then verify.
+#
+#   open detected ──15 min──> attempt 1 ──60 s──> attempt 2 ──60 s──> give up
+#
+# Every attempt is verified against the door's own currentState rather than
+# assumed, because a door that reverses on an obstruction still ACKs the
+# command. Detecting the door closed at any point resets everything, including
+# the disable flag — so "disable" only ever suppresses the current opening.
+GARAGE_KEY = "garage"
+GARAGE_COUNTDOWN_SECONDS = 15 * 60   # open -> first close attempt
+GARAGE_VERIFY_SECONDS = 60           # attempt -> check it actually closed
+GARAGE_MAX_ATTEMPTS = 2
+
+# phase: "idle" (closed, or disabled) | "counting" | "closing" | "failed"
+_garage_auto = {"enabled": True, "phase": "idle", "deadline": None, "attempts": 0}
+_garage_auto_task = None
+_garage_was_open = None              # last observed open/closed, for edge detection
+
+
+def get_garage_auto() -> dict:
+    a = _garage_auto
+    remaining = None
+    if a["deadline"] is not None:
+        remaining = max(0, int(a["deadline"] - time.time()))
+    return {
+        "enabled": a["enabled"],
+        "phase": a["phase"],
+        "attempts": a["attempts"],
+        "max_attempts": GARAGE_MAX_ATTEMPTS,
+        "remaining": remaining,
+        "countdown_seconds": GARAGE_COUNTDOWN_SECONDS,
+    }
+
+
+def _cancel_garage_task():
+    global _garage_auto_task
+    task, _garage_auto_task = _garage_auto_task, None
+    if task and not task.done():
+        task.cancel()
+
+
+def _start_garage_countdown():
+    """Arm a fresh 15-minute countdown. No-op while auto-close is disabled."""
+    global _garage_auto_task
+    if not _garage_auto["enabled"]:
+        _garage_auto.update({"phase": "idle", "deadline": None, "attempts": 0})
+        return
+    _cancel_garage_task()
+    _garage_auto.update({
+        "phase": "counting",
+        "deadline": time.time() + GARAGE_COUNTDOWN_SECONDS,
+        "attempts": 0,
+    })
+    _garage_auto_task = asyncio.create_task(_garage_auto_runner())
+    log.info("Garage open — auto-close in %d min", GARAGE_COUNTDOWN_SECONDS // 60)
+
+
+def _reset_garage_auto():
+    """Door is closed: stand everything down, including the disable flag."""
+    _cancel_garage_task()
+    _garage_auto.update({"enabled": True, "phase": "idle", "deadline": None, "attempts": 0})
+
+
+def _sync_garage_auto():
+    """Drive the watcher off the garage's open/closed state. Edge-triggered, so
+    it is safe to call from every event and every poll."""
+    global _garage_was_open
+    is_open = _state.get(GARAGE_KEY)
+    if is_open is None or is_open == _garage_was_open:
+        return
+    _garage_was_open = is_open
+    if is_open:
+        _start_garage_countdown()
+    else:
+        _reset_garage_auto()
+
+
+async def _broadcast_garage_auto():
+    if _broadcast_cb is None:
+        return
+    try:
+        await _broadcast_cb({"zwave": get_state(), "garage_auto": get_garage_auto()})
+    except Exception as e:
+        log.warning("Garage auto-close broadcast error: %s", e)
+
+
+async def _garage_auto_runner():
+    """Countdown, then up to GARAGE_MAX_ATTEMPTS verified close attempts.
+
+    Cancelled by _reset_garage_auto() as soon as the door reports closed, so the
+    happy path never reaches the end of this coroutine.
+    """
+    try:
+        await asyncio.sleep(GARAGE_COUNTDOWN_SECONDS)
+        while _garage_auto["attempts"] < GARAGE_MAX_ATTEMPTS:
+            attempt = _garage_auto["attempts"] + 1
+            _garage_auto.update({
+                "phase": "closing",
+                "attempts": attempt,
+                "deadline": time.time() + GARAGE_VERIFY_SECONDS,
+            })
+            log.info("Garage auto-close attempt %d/%d", attempt, GARAGE_MAX_ATTEMPTS)
+            await _broadcast_garage_auto()
+            try:
+                await set_power(GARAGE_KEY, False)
+            except Exception as e:
+                log.warning("Garage auto-close attempt %d could not be sent: %s", attempt, e)
+            await asyncio.sleep(GARAGE_VERIFY_SECONDS)
+            if _state.get(GARAGE_KEY) is False:
+                return                       # closed; the value event resets us
+        _garage_auto.update({"phase": "failed", "deadline": None})
+        log.warning("Garage auto-close gave up after %d attempts — door still open",
+                    GARAGE_MAX_ATTEMPTS)
+        await _broadcast_garage_auto()
+        if _notify_cb is not None:
+            try:
+                await _notify_cb(
+                    "Garage still open",
+                    f"Auto-close failed after {GARAGE_MAX_ATTEMPTS} attempts.",
+                    "garage-auto-close",
+                )
+            except Exception as e:
+                log.warning("Garage auto-close notification failed: %s", e)
+    except asyncio.CancelledError:
+        raise
+
+
+async def set_garage_auto_close(enabled: bool) -> dict:
+    """Enable/disable auto-close for the current opening. Disabling drops the
+    countdown; re-enabling while the door is still open starts a fresh one."""
+    _garage_auto["enabled"] = bool(enabled)
+    if enabled and _state.get(GARAGE_KEY):
+        _start_garage_countdown()
+    else:
+        _cancel_garage_task()
+        _garage_auto.update({"phase": "idle", "deadline": None, "attempts": 0})
+        log.info("Garage auto-close %s", "enabled" if enabled else "disabled")
+    return get_garage_auto()
 
 
 # ── attic shared timers (transport-agnostic) ─────────────────────────────────

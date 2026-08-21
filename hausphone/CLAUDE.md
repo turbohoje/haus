@@ -121,8 +121,12 @@ recomputes from the cached node values — no round-trip). The connection self-h
 Command classes in play:
 - **Binary Switch (0x25)** — reading lights, attic fans, fireplaces, LD floor pump: read
   `currentValue`, write `targetValue`.
-- **Barrier Operator (0x66)** — garage door opener (Nortek NGD00Z): read `currentState`
-  (255 = open), write `targetState` (255 open / 0 close). Flagged as `kind: "barrier"`.
+- **Barrier Operator (0x66)** — garage door opener (Nortek NGD00Z): read `currentState`,
+  write `targetState` (255 open / 0 close). Flagged as `kind: "barrier"`. **Any
+  `currentState` other than 0 counts as open** (255 open, 254 opening, 252 closing,
+  253 stopped, 1–99 partly open) — a door stopped half-way must not read as CLOSED.
+  `set_power` deliberately skips the optimistic state write for barriers so the badge
+  tracks the real door instead of flipping the moment you slide (see auto-close below).
 - **Central Scene (0x5B)** — the master remote's buttons (see Scene Engine below).
 
 #### Devices (`DEVICES` in `app/devices/zwave.py`)
@@ -135,7 +139,7 @@ Command classes in play:
 | `ld_floor` | 24 | — | LD Floor | Lady-den floor pump |
 | `l_fire` | 14 | — | Living Fire | auto-off 90 min |
 | `m_fire` | 10 | 1 | Master Fire | ZW140; auto-off 90 min. If it doesn't toggle, try endpoint 2 |
-| `garage` | 6 | — | Garage | Barrier Operator; slide-to-activate |
+| `garage` | 6 | — | Garage | Barrier Operator; slide-to-activate; auto-close watcher |
 
 To add a switch: add an entry to `DEVICES` (`node_id`, optional `endpoint`, `label`, optional
 `auto_off_minutes`). The read/write value-IDs, state cache, event index, and `/api/zwave/{key}/power`
@@ -157,6 +161,28 @@ Holds are de-duped: the WallMote streams `KeyHeldDown` ~5×/sec while held, so a
 scene **once** (re-arms on release or after a 2 s gap). The action dict is deliberately open-ended so
 a future per-action timer (e.g. `"off_after_seconds": 10800`, hooking `_schedule_auto_off`) slots in
 without restructuring — not implemented yet.
+
+#### Garage auto-close
+The garage is the one device where "left open" is a security problem, so it gets a watcher
+rather than a plain auto-off timer (`# ── garage auto-close ──` in `zwave.py`):
+
+```
+open detected ──15 min──> attempt 1 ──60 s──> attempt 2 ──60 s──> give up + push alert
+```
+
+- Constants: `GARAGE_COUNTDOWN_SECONDS` (900), `GARAGE_VERIFY_SECONDS` (60), `GARAGE_MAX_ATTEMPTS` (2).
+- **Edge-triggered** off the garage's open/closed state via `_sync_garage_auto()`, called from
+  `_hydrate` (door already open at startup), `_handle_event` (push) and `refresh_state` (60 s poll).
+- Every attempt is **verified against the door's own `currentState`**, not assumed — a door that
+  reverses on an obstruction still ACKs the command. This is why `set_power` doesn't write barrier
+  state optimistically; doing so would make the verify check see a door that never moved as closed.
+- Detecting the door **closed** resets everything (`_reset_garage_auto`), including the disable
+  flag — so disabling only ever suppresses the current opening.
+- Disabling drops the countdown; re-enabling while the door is still open starts a fresh 15:00.
+- State is exposed as the `garage_auto` snapshot key:
+  `{enabled, phase: idle|counting|closing|failed, attempts, max_attempts, remaining, countdown_seconds}`.
+- Everything is in-memory: a container restart re-arms from the door's current state, so a door
+  that is open when the app boots gets a full fresh 15 minutes.
 
 #### Door Locks
 Four Allegion BE469 deadbolts (S0-secured), in `LOCKS` in `zwave.py` (separate from `DEVICES` since
@@ -212,6 +238,26 @@ The `name` field is used as the API key (e.g. `/api/wemo/water_feature/power`) �
 
 ---
 
+## Push Notifications (`app/push.py`)
+Web Push over VAPID (`pywebpush`), used only for the garage auto-close giving up.
+
+- VAPID keypair + subscriptions live in the **certs volume** (`/certs/vapid_private.pem`,
+  `/certs/push_subscriptions.json`) so they survive a rebuild. Dev runs fall back to
+  `hausphone/data/` (gitignored); override with `HAUSPHONE_DATA_DIR`.
+- `zwave.py` stays transport-agnostic: `main.py` wires it up with
+  `zwave.register_notify(push.send)`, mirroring `register_broadcast`.
+- Everything is non-fatal — if `pywebpush` is missing or the key dir is unwritable,
+  `push.available()` is False and the Settings switch greys out with a reason.
+- Subscriptions returning **404/410** are pruned automatically on send.
+- Opt-in is per phone, in **Settings → Garage alerts** (permission must be requested from a
+  tap, so it can't be done on load). "Send test notification" verifies the round-trip.
+- Requirements: HTTPS (the self-signed cert), and **on iOS the PWA must be installed to the
+  home screen**. The NUC needs outbound HTTPS to `fcm.googleapis.com` / `web.push.apple.com`.
+- Re-enabling always unsubscribes first, then re-subscribes — an old subscription bound to a
+  previous VAPID key would be silently rejected by the push service.
+
+---
+
 ## UI Layout
 
 ### Card structure
@@ -260,7 +306,9 @@ resulting order is stored per device in `localStorage`.
 6. **Water Feature** — single card, auto-off countdown timer (WeMo)
 7. **Living Fire** — single card, 90-min auto-off countdown
 8. **Master Fire** — single card, 90-min auto-off countdown
-9. **Garage** — single card, slide-to-activate (prevents pocket-dial)
+9. **Garage** — single card, slide-to-activate (prevents pocket-dial); auto-close countdown
+   badge + status line ("Closing automatically in 14m 32s" / "Close attempt 1 of 2" /
+   "Gave up after 2 attempts") and a **Disable** checkbox that resets when the door closes
 
 ### Settings overlay (gear icon, top bar)
 Per-device prefs in `localStorage` under `haus-prefs`, driven by the `ELEMENTS` list in `app.js`:
@@ -280,16 +328,20 @@ Per-device prefs in `localStorage` under `haus-prefs`, driven by the `ELEMENTS` 
   (that wipes saved prefs). A routine `vN` bump no longer resets toggles or card order.
 - To add a card: add an `ELEMENTS` entry + a matching `data-element` attribute. It backfills as
   enabled at the bottom of existing saved orders.
+- **Garage alerts** (`#settings-push`) sits below the orderable list and is hidden in reorder
+  mode. It is not a card pref — it toggles this phone's Web Push subscription (see above).
 
 ---
 
 ## PWA / Service Worker
 - Cache key is `"haus-vN"` in `sw.js` — **bump N whenever any static file changes** so phones receive the updated files
-- Current version: `haus-v24`
+- Current version: `haus-v25`
 - Keep the version label in `index.html` (`#app-version`) in sync with the cache key — it's shown in the top bar so you can verify which build a phone is running.
 - Network-first strategy for app shell (always fetches from server when online, falls back to cache)
 - Never caches `/image`, `/api/*`, or `/ws`
 - `skipWaiting()` + `clients.claim()` means new SW activates immediately on install
+- Also handles `push` (renders the notification from the `{title, body, tag, url}` payload) and
+  `notificationclick` (focuses an open Haus window, else opens one)
 
 ---
 
@@ -324,9 +376,14 @@ POST /api/attic/delay-on            { "armed", "fans": [...], "duration_seconds"
 POST /api/attic/off-timer           { "armed", "duration_seconds" }
 POST /api/lock/{lock_key}           { "locked": true|false }
 POST /api/wemo/{device_name}/power  { "on": true|false }
+POST /api/garage/auto-close         { "enabled": true|false }
+GET  /api/push/key                  — { available, key }  (VAPID public key)
+POST /api/push/subscribe            — body is the raw PushSubscription JSON
+POST /api/push/unsubscribe          { "endpoint": "..." }
+POST /api/push/test                 — fan out a test notification; { "sent": n }
 ```
 
-State snapshot keys: `fan`, `zwave`, `attic_timers`, `locks`, `wemo`.
+State snapshot keys: `fan`, `zwave`, `attic_timers`, `locks`, `wemo`, `garage_auto`.
 
 Z-Wave state is push-based (kept live by driver events). Other device types are cached in-memory and re-polled from hardware every 60 seconds. On WebSocket connect (i.e. app load) Z-Wave state is refreshed if the cache is older than 3 seconds — this catches switches flipped externally (physical remote, etc.). Other device types serve cached state on connect.
 
@@ -342,9 +399,10 @@ hausphone/
 ├── wemo_config.json
 ├── app/
 │   ├── main.py             ← FastAPI app, WebSocket, watchdog, background poller
+│   ├── push.py             ← Web Push (VAPID) — garage alerts
 │   ├── devices/
 │   │   ├── fan.py          ← aiobafi6 wrapper
-│   │   ├── zwave.py        ← zwave-js WebSocket client + scene engine
+│   │   ├── zwave.py        ← zwave-js WebSocket client + scene engine + garage auto-close
 │   │   └── wemo.py         ← pywemo wrapper + auto-off timer
 │   └── static/
 │       ├── index.html      ← PWA shell
@@ -358,7 +416,7 @@ hausphone/
 
 ## Future / Out of Scope Now
 - Tailscale hostname/IP for the NUC — add to offline banner when known
-- Security camera analysis + push notifications
+- Security camera analysis (push plumbing already exists — see `app/push.py`)
 - Desktop dashboard verbose layout
 - Additional Z-Wave devices, TVs, thermostats
 - Auto/whoosh fan modes

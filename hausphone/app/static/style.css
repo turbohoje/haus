@@ -297,6 +297,24 @@ html, body {
   white-space: nowrap;
 }
 .timer-badge.visible { display: inline-block; }
+.timer-badge.alert { color: var(--danger); border-color: var(--danger); }
+
+/* ── Garage auto-close row ── */
+.garage-auto {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px 12px;
+}
+.garage-auto-status {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  flex: 1;
+  min-width: 0;
+}
+.garage-auto-status.active { color: var(--warn); font-variant-numeric: tabular-nums; }
+.garage-auto-status.alert  { color: var(--danger); }
 
 /* ── State badge (text label like ON / OFF / OPEN) ── */
 .state-badge {
@@ -600,6 +618,32 @@ html, body {
   border-top: 1px solid var(--border);
   padding-top: 10px;
 }
+#settings-push {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+#settings-body.reordering #settings-push { display: none; }
+#push-status {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  padding: 0 4px;
+}
+#push-test {
+  align-self: flex-start;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+#push-test:disabled { opacity: 0.5; }
+#push-test[hidden] { display: none; }
+
 #settings-hint {
   display: none;
   color: var(--text-dim);

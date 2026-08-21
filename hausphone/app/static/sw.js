@@ -1,5 +1,5 @@
-const CACHE = "haus-v24";
-const SHELL = ["/", "/static/style.css?v=24", "/static/app.js?v=24", "/manifest.json", "/static/placeholder.jpg"];
+const CACHE = "haus-v25";
+const SHELL = ["/", "/static/style.css?v=25", "/static/app.js?v=25", "/manifest.json", "/static/placeholder.jpg"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
@@ -36,5 +36,37 @@ self.addEventListener("fetch", e => {
         return res;
       })
       .catch(() => caches.match(e.request))
+  );
+});
+
+// ── Web Push ──────────────────────────────────────────────────────────────
+// Payload comes from app/push.py: { title, body, tag, url }
+self.addEventListener("push", e => {
+  let d = {};
+  try {
+    d = e.data ? e.data.json() : {};
+  } catch (_) {
+    d = { body: e.data ? e.data.text() : "" };
+  }
+  e.waitUntil(self.registration.showNotification(d.title || "Haus", {
+    body: d.body || "",
+    tag: d.tag || "haus",
+    renotify: true,
+    icon: "/static/icon-192.png",
+    badge: "/static/icon-192.png",
+    data: { url: d.url || "/" },
+  }));
+});
+
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/";
+  e.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
+      for (const c of list) {
+        if ("focus" in c) return c.focus();
+      }
+      return clients.openWindow(url);
+    })
   );
 });

@@ -3,7 +3,7 @@
 const SERVER = `${location.protocol}//${location.host}`;
 let ws = null;
 let wsRetryMs = 1000;
-let state = { fan: {}, zwave: {}, wemo: {}, attic_timers: null, locks: {} };
+let state = { fan: {}, zwave: {}, wemo: {}, attic_timers: null, locks: {}, garage_auto: null };
 let timerInterval = null;
 let deferredInstallPrompt = null;
 
@@ -192,6 +192,7 @@ function setReorderMode(on) {
 
 document.getElementById("settings-gear")?.addEventListener("click", () => {
   document.getElementById("settings-overlay").classList.add("visible");
+  refreshPushUI();
 });
 document.getElementById("settings-close")?.addEventListener("click", () => {
   document.getElementById("settings-overlay").classList.remove("visible");
@@ -316,6 +317,9 @@ function mergeState(data) {
   }
   if (data.attic_timers) {
     state.attic_timers = data.attic_timers;
+  }
+  if (data.garage_auto) {
+    state.garage_auto = data.garage_auto;
   }
 }
 
@@ -464,6 +468,61 @@ garageSlide?.addEventListener("change", () => {
     resetGarageSlide();
   }
 });
+
+// ── Garage auto-close (countdown, attempts, disable) ──────────────────────
+// All the logic lives on the server; this renders `state.garage_auto` and
+// posts the disable flag. The flag resets itself when the door reports closed.
+const garageAutoBadge   = document.getElementById("garage-auto-badge");
+const garageAutoStatus  = document.getElementById("garage-auto-status");
+const garageAutoDisable = document.getElementById("garage-auto-disable");
+
+garageAutoDisable?.addEventListener("change", async () => {
+  const enabled = !garageAutoDisable.checked;
+  garageAutoDisable.disabled = true;
+  try {
+    mergeState({ garage_auto: await post("/api/garage/auto-close", { enabled }) });
+  } catch (e) {
+    console.error(e);
+  } finally {
+    garageAutoDisable.disabled = false;
+    renderGarageAuto();
+  }
+});
+
+function renderGarageAuto() {
+  const g = state.garage_auto;
+  if (!g || !garageAutoStatus) return;
+  const open = !!state.zwave.garage?.on;
+  const rem = formatRemaining(g.remaining);
+  let text, badge = "", active = false, alert = false;
+
+  if (!g.enabled) {
+    text = open ? "Auto-close disabled — door stays open"
+                : "Auto-close disabled for the next opening";
+  } else if (g.phase === "counting") {
+    text = `Closing automatically in ${rem}`;
+    badge = `auto-close ${rem}`;
+    active = true;
+  } else if (g.phase === "closing") {
+    text = `Close attempt ${g.attempts} of ${g.max_attempts} — verifying ${rem}`;
+    badge = `closing ${g.attempts}/${g.max_attempts}`;
+    active = true;
+  } else if (g.phase === "failed") {
+    text = `Gave up after ${g.attempts} attempts — door still open`;
+    badge = "auto-close failed";
+    alert = true;
+  } else {
+    text = `Auto-close armed — ${Math.round(g.countdown_seconds / 60)} min after it opens`;
+  }
+
+  garageAutoStatus.textContent = text;
+  garageAutoStatus.classList.toggle("active", active);
+  garageAutoStatus.classList.toggle("alert", alert);
+  garageAutoDisable.checked = !g.enabled;
+  garageAutoBadge.textContent = badge;
+  garageAutoBadge.classList.toggle("visible", !!badge);
+  garageAutoBadge.classList.toggle("alert", alert);
+}
 
 // ── Door locks ─────────────────────────────────────────────────────────────
 const LOCK_ICON = { locked: "\u{1F512}", unlocked: "\u{1F513}", unknown: "❓" };
@@ -794,6 +853,113 @@ function renderAtticTimers() {
   }
 }
 
+// ── Push notifications (garage alerts) ────────────────────────────────────
+// One subscription per phone, stored server-side. iOS only allows this from an
+// installed (home-screen) PWA, and permission must be asked from a tap — hence
+// the switch in Settings rather than a prompt on load.
+const pushEnable = document.getElementById("push-enable");
+const pushStatus = document.getElementById("push-status");
+const pushTest   = document.getElementById("push-test");
+const pushSupported =
+  "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
+function urlB64ToUint8Array(b64) {
+  const padded = (b64 + "=".repeat((4 - b64.length % 4) % 4))
+    .replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(padded);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+async function currentPushSub() {
+  const reg = await navigator.serviceWorker.ready;
+  return reg.pushManager.getSubscription();
+}
+
+async function enablePush() {
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") throw new Error("Notification permission was not granted.");
+  const { key } = await fetch("/api/push/key").then(r => r.json());
+  if (!key) throw new Error("Server has no push key.");
+  const reg = await navigator.serviceWorker.ready;
+  // Drop any older subscription first — it may be bound to a previous VAPID key.
+  const existing = await reg.pushManager.getSubscription();
+  if (existing) await existing.unsubscribe();
+  const sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlB64ToUint8Array(key),
+  });
+  await post("/api/push/subscribe", sub.toJSON());
+}
+
+async function disablePush() {
+  const sub = await currentPushSub();
+  if (!sub) return;
+  try { await post("/api/push/unsubscribe", { endpoint: sub.endpoint }); }
+  catch (e) { console.warn(e); }
+  await sub.unsubscribe();
+}
+
+async function refreshPushUI() {
+  if (!pushStatus) return;
+  if (!pushSupported) {
+    pushEnable.disabled = true;
+    pushTest.hidden = true;
+    pushStatus.textContent = (isIos && !isStandalone)
+      ? "Add Haus to your home screen first, then enable alerts."
+      : "This browser does not support notifications.";
+    return;
+  }
+  const info = await fetch("/api/push/key").then(r => r.json()).catch(() => ({}));
+  if (!info.available) {
+    pushEnable.disabled = true;
+    pushTest.hidden = true;
+    pushStatus.textContent = "Push is not set up on the server.";
+    return;
+  }
+  const sub = await currentPushSub().catch(() => null);
+  const on = !!sub && Notification.permission === "granted";
+  pushEnable.disabled = false;
+  pushEnable.checked = on;
+  pushTest.hidden = !on;
+  pushStatus.textContent = on
+    ? "This phone is alerted when garage auto-close gives up."
+    : (Notification.permission === "denied"
+        ? "Notifications are blocked for this site in browser settings."
+        : "Alert this phone if the garage fails to auto-close.");
+}
+
+pushEnable?.addEventListener("change", async () => {
+  const want = pushEnable.checked;
+  pushEnable.disabled = true;
+  let error = "";
+  try {
+    if (want) await enablePush();
+    else await disablePush();
+  } catch (e) {
+    console.error(e);
+    error = e.message || "Could not change the notification setting.";
+  }
+  await refreshPushUI();
+  if (error) pushStatus.textContent = error;
+});
+
+pushTest?.addEventListener("click", async () => {
+  pushTest.disabled = true;
+  try {
+    const r = await post("/api/push/test", {});
+    pushStatus.textContent = r.sent
+      ? `Test notification sent to ${r.sent} device(s).`
+      : "No devices are subscribed.";
+  } catch (e) {
+    console.error(e);
+    pushStatus.textContent = "Test notification failed — check the server log.";
+  } finally {
+    pushTest.disabled = false;
+  }
+});
+
 // ── Render all ────────────────────────────────────────────────────────────
 function renderAll() {
   const f = state.fan;
@@ -831,6 +997,7 @@ function renderAll() {
   setDot(document.getElementById("wemo-water-dot"), wf?.on);
   updateTimers();
   renderAtticTimers();
+  renderGarageAuto();
   renderLocks();
 }
 
@@ -863,7 +1030,12 @@ function renderAll() {
     if (at?.off_timer?.armed && at.off_timer.remaining > 0) {
       at.off_timer.remaining = Math.max(0, at.off_timer.remaining - 1);
     }
+    const ga = state.garage_auto;
+    if (ga?.remaining > 0) {
+      ga.remaining = Math.max(0, ga.remaining - 1);
+    }
     updateTimers();
     renderAtticTimers();
+    renderGarageAuto();
   }, 1000);
 })();

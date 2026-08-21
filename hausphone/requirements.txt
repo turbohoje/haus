@@ -6,3 +6,4 @@ httpx==0.27.2
 pywemo==1.2.0
 aiobafi6==0.9.0
 aiohttp==3.10.10          # zwave-js-server WebSocket client (app/devices/zwave.py)
+pywebpush==2.4.0          # Web Push/VAPID alerts (app/push.py)
