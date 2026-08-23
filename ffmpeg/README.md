@@ -35,6 +35,9 @@ literally). These files are produced by other processes/scripts:
 | `wx_forecast_week.txt`    | right, lower    | weekly weather forecast          |
 | `imgproc/rockiesgame.txt` | bottom left     | Rockies game info                |
 | `power.txt`               | top left        | live power draw, e.g. `2196 W`   |
+| `cal_jenny.txt`           | bottom, panel L | jenny's next events              |
+| `cal_justin.txt`          | bottom, panel R | justin's next events             |
+| `cal_both.txt`            | above, centered | events on both calendars         |
 
 The render loop only reads these files. If a file is stale or empty the overlay
 just shows the old/blank text — it never blocks the loop.
@@ -86,6 +89,79 @@ so `At:` lands in the same column as `Ma:`/`Ba:`. A long AQI string (e.g.
 
 Because the overlay is right-anchored (`x=w-tw-670`), `tw` is the width of the
 **widest line**, so lengthening any one line shifts the whole block left.
+
+## Calendar overlays (`fetch_cal.py` → `cal_jenny.txt`, `cal_justin.txt`, `cal_both.txt`)
+
+Run from cron every 5 minutes, alongside `fetch_wx.py`. Writes the next 4
+events from each of two Google calendars along the bottom of the 1280px photo
+panel — `herroyalhighness.jenny@gmail.com` anchored to the panel's left edge
+(`x=650`), `justin@rocketscience.cc` right-anchored (`x=w-tw-10`). Both clear
+the Rockies line, which lives in the 640px camera column.
+
+Auth reuses the service account from `calendar_copy/credentials_dw.json`
+(`cal-sync@rocketscience-calendar-sync.iam.gserviceaccount.com`) — the same one
+`cal_sync.py` uses — which is already shared on both calendars, read-only scope
+here. No venv: the system python3 has the google client libs.
+
+### Shared rows
+
+A row on **both** calendars is pulled out of the two side blocks and drawn once
+in `cal_both.txt`, centered on the row above them. A third block will not fit
+alongside the other two, hence the stacking rather than a middle column.
+
+Neither side backfills, so k shared rows means k lines in the middle and 4−k
+down each side. That is what keeps the sides at 3 lines or fewer whenever
+`cal_both.txt` has anything in it, which is what `cal_both`'s `y=h-th-160`
+assumes: its box bottom lands at y=930 and a bottom-anchored 3-line side block
+tops out at y=950.
+
+Two rows are the same row when weekday, time and **full** title match — Jenny's
+09:00 dentist and Justin's 14:00 dentist stay in their own columns, and two
+long titles that differ only past the truncation point stay separate too.
+
+### Line format
+
+```
+               U11:00 Wasted Seamen                        <- cal_both, centered
+T16:00 Telemeeting           M08:00 pay jim
+R  all Danette Visit         M10:30 window and door delive
+F01:00 Payday                M16:45 Laurel Insights Interv
+```
+
+1-char weekday + 5-char time + title. Days use the same single letters
+`wx_forecast_week.txt` already puts on screen — `M T W R F S U`, so `T` is
+Tuesday and `R` is Thursday. All-day events render `all` in the time column.
+Titles are hard truncated to fit: **29 chars** per row in a side block (22 of
+title), **62** for a shared row (55 of title), which is the panel's full
+width.
+
+These three overlays run at **fontsize 33**, 3/4 of the other overlays, with
+`line_spacing` cut to 10 to match. drawtext's line pitch here is
+`30 + line_spacing` and AndaleMono is exactly 20px/char at this size — leaving
+`line_spacing` at 20 would have shrunk the blocks horizontally but not
+vertically. All the pixel numbers above are measured, not derived.
+
+Only the weekday is shown, so an event more than a week out is ambiguous
+(a `T` could be either Tuesday). In practice 4 events rarely reach that far.
+
+### Which events count
+
+- **`busy (…)` blocks are skipped.** `justin@rocketscience.cc` is the merged
+  calendar `cal_sync.py` writes into, so it carries synthesized
+  `busy (Volta)` / `busy (AO)` / `busy (personal)` placeholders that would
+  otherwise eat slots without saying anything.
+- **Deduped by title**, so a multi-day or daily-recurring event shows once at
+  its earliest occurrence instead of filling all 4 lines.
+- **Timed events must not have started yet.** All-day events count through the
+  end of their last day — requiring `start > now` would drop an all-day event
+  at midnight on the day it happens.
+
+Failure behavior: the three files have to agree on which rows are shared, so a
+failed fetch rewrites none of them and every overlay keeps its last good
+contents rather than blanking (same idea as `power.txt`). A successful fetch
+with no events writes an empty file, which `drawtext` renders as nothing.
+Writes go through a temp file + `os.replace` because the render loop re-reads
+the file every frame.
 
 ## Power overlay (`power.txt`)
 

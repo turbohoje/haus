@@ -52,6 +52,20 @@ while [ 1 ]; do
   testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/wx_forecast_week.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw:y=180:line_spacing=20:expansion=none'"
   testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/imgproc/rockiesgame.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=10:y=h-th-10:line_spacing=20:expansion=none'"
   testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/power.txt:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.4:boxborderw=10:x=10:y=0:line_spacing=20:expansion=none'"
+  # Next 4 calendar events along the bottom of the 1280px photo panel, written
+  # by fetch_cal.py on cron: jenny on the panel's left edge, justin
+  # right-anchored, 29 chars each so the two boxes clear each other. Rows both
+  # calendars share go in cal_both.txt, centered on the row above and free to
+  # use the panel's full 62-char width -- a third box will not fit alongside
+  # the other two. These run at fontsize 33 (3/4 of the other overlays) with
+  # line_spacing cut to match, since drawtext's line pitch here is 30+spacing
+  # and leaving it at 20 would shrink the width but not the height.
+  # The 160 offset puts cal_both's box bottom at y=930, clearing a
+  # bottom-anchored 3-line side block (top at 950) -- the most either side can
+  # have while cal_both.txt is non-empty.
+  testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/cal_jenny.txt:fontcolor=white:fontsize=33:box=1:boxcolor=black@0.4:boxborderw=10:x=650:y=h-th-10:line_spacing=10:expansion=none'"
+  testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/cal_justin.txt:fontcolor=white:fontsize=33:box=1:boxcolor=black@0.4:boxborderw=10:x=w-tw-10:y=h-th-10:line_spacing=10:expansion=none'"
+  testargs="$testargs,drawtext='fontfile=/home/turbohoje/haus/ffmpeg/AndaleMono.ttf:textfile=$wd/cal_both.txt:fontcolor=white:fontsize=33:box=1:boxcolor=black@0.4:boxborderw=10:x=640+(1280-tw)/2:y=h-th-160:line_spacing=10:expansion=none'"
 
 
 
