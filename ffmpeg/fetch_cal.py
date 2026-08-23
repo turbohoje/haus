@@ -46,11 +46,23 @@ SHARED_TITLE_WIDTH = 55  # 7 + 55 = 62 chars, the full panel width
 DOW = ['M', 'T', 'W', 'R', 'F', 'S', 'U']
 
 
-def is_placeholder(summary):
-    """cal_sync.py merges other calendars into justin@rocketscience.cc as
-    synthesized 'busy (Volta)' / 'busy (AO)' / 'busy (personal)' blocks. They
-    carry no information worth a slot on screen."""
-    return summary.lower().startswith('busy (')
+# Which synthesized busy blocks are worth a slot, by what is inside the parens.
+VISIBLE_BUSY = {'volta'}
+
+
+def relabel(summary):
+    """Rewrite cal_sync.py's placeholder blocks, or drop them.
+
+    cal_sync.py merges other calendars into justin@rocketscience.cc as
+    synthesized 'busy (Volta)' / 'busy (AO)' / 'busy (personal)' blocks. Volta
+    is worth showing, but not under a title that reads as a stop word, so it
+    goes on screen as just 'Volta'. The rest say nothing and return None to be
+    dropped.
+    """
+    if summary.lower().startswith('busy (') and summary.endswith(')'):
+        inner = summary[len('busy ('):-1].strip()
+        return inner if inner.lower() in VISIBLE_BUSY else None
+    return summary
 
 
 def upcoming(events, now):
@@ -63,8 +75,8 @@ def upcoming(events, now):
     today = now.date()
     out = []
     for ev in events:
-        summary = (ev.get('summary') or '').strip()
-        if not summary or is_placeholder(summary):
+        summary = relabel((ev.get('summary') or '').strip())
+        if not summary:
             continue
 
         start = ev['start']

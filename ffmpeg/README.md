@@ -125,7 +125,7 @@ long titles that differ only past the truncation point stay separate too.
                U11:00 Wasted Seamen                        <- cal_both, centered
 T16:00 Telemeeting           M08:00 pay jim
 R  all Danette Visit         M10:30 window and door delive
-F01:00 Payday                M16:45 Laurel Insights Interv
+F01:00 Payday                M11:30 Volta
 ```
 
 1-char weekday + 5-char time + title. Days use the same single letters
@@ -146,10 +146,14 @@ Only the weekday is shown, so an event more than a week out is ambiguous
 
 ### Which events count
 
-- **`busy (…)` blocks are skipped.** `justin@rocketscience.cc` is the merged
-  calendar `cal_sync.py` writes into, so it carries synthesized
-  `busy (Volta)` / `busy (AO)` / `busy (personal)` placeholders that would
-  otherwise eat slots without saying anything.
+- **`busy (Volta)` shows as `Volta`; other `busy (…)` blocks are skipped.**
+  `justin@rocketscience.cc` is the merged calendar `cal_sync.py` writes into,
+  so it carries synthesized `busy (Volta)` / `busy (AO)` / `busy (personal)`
+  placeholders. Volta is worth a slot, just not under a title that reads as a
+  stop word, so `relabel()` unwraps it; the rest say nothing and are dropped.
+  Widening that to another one is a matter of adding it to `VISIBLE_BUSY`.
+  Note this lands *before* the title dedupe below, so a day of back-to-back
+  Volta blocks takes one line, at the earliest of them, rather than four.
 - **Deduped by title**, so a multi-day or daily-recurring event shows once at
   its earliest occurrence instead of filling all 4 lines.
 - **Timed events must not have started yet.** All-day events count through the
