@@ -427,22 +427,65 @@ bindZwave("ld_floor", "zwave-ld-floor-toggle");
 bindZwave("l_fire", "zwave-l-fire-toggle");
 bindZwave("m_fire", "zwave-m-fire-toggle");
 
-// ── Garage door (slide to activate) ───────────────────────────────────────
-const garageSlide = document.getElementById("garage-slide");
-const garageWrap  = garageSlide?.parentElement;
-const ARM_THRESHOLD = 90;
-let garageFiring = false;
+// ── Slide-to-activate control ────────────────────────────────────────────
+// A native range input jumps its value to wherever you tap, so tapping the far
+// end of the track fired the action — exactly what the slide gesture is meant
+// to prevent. This requires a real drag: the gesture has to start on the thumb
+// and travel to the end of the track while held. A tap anywhere does nothing.
+function makeSlideToActivate(wrap, onComplete) {
+  const thumb = wrap?.querySelector(".slide-thumb");
+  if (!thumb) return null;
 
-function resetGarageSlide() {
-  if (!garageSlide) return;
-  garageSlide.value = 0;
-  garageWrap.classList.remove("armed");
+  const ARM_FRACTION = 0.9;   // fraction of the track that counts as "slid"
+  const INSET = 4;            // px gap the thumb sits in at each end (see CSS)
+  let pointerId = null;
+  let startX = 0;
+  let maxTravel = 1;
+  let travel = 0;
+
+  function armed() {
+    return travel >= maxTravel * ARM_FRACTION;
+  }
+
+  function reset() {
+    pointerId = null;
+    travel = 0;
+    thumb.style.transform = "";
+    wrap.classList.remove("armed", "dragging");
+  }
+
+  thumb.addEventListener("pointerdown", (e) => {
+    if (pointerId !== null) return;
+    pointerId = e.pointerId;
+    startX = e.clientX;
+    travel = 0;
+    maxTravel = Math.max(1, wrap.clientWidth - thumb.offsetWidth - INSET * 2);
+    wrap.classList.add("dragging");
+    thumb.setPointerCapture(pointerId);
+    e.preventDefault();
+  });
+
+  thumb.addEventListener("pointermove", (e) => {
+    if (e.pointerId !== pointerId) return;
+    travel = Math.min(maxTravel, Math.max(0, e.clientX - startX));
+    thumb.style.transform = `translateX(${travel}px)`;
+    wrap.classList.toggle("armed", armed());
+  });
+
+  thumb.addEventListener("pointerup", (e) => {
+    if (e.pointerId !== pointerId) return;
+    const fire = armed();
+    reset();
+    if (fire) onComplete();
+  });
+
+  thumb.addEventListener("pointercancel", reset);
+
+  return { reset };
 }
 
-garageSlide?.addEventListener("input", () => {
-  const v = parseInt(garageSlide.value);
-  garageWrap.classList.toggle("armed", v >= ARM_THRESHOLD);
-});
+// ── Garage door (slide to activate) ───────────────────────────────────────
+let garageFiring = false;
 
 async function fireGarage() {
   if (garageFiring) return;
@@ -455,19 +498,10 @@ async function fireGarage() {
     console.error(e);
   } finally {
     garageFiring = false;
-    resetGarageSlide();
   }
 }
 
-// `change` fires on release for range inputs across desktop and mobile;
-// covers the case where the user lets go and the value sticks at >=90.
-garageSlide?.addEventListener("change", () => {
-  if (parseInt(garageSlide.value) >= ARM_THRESHOLD) {
-    fireGarage();
-  } else {
-    resetGarageSlide();
-  }
-});
+makeSlideToActivate(document.getElementById("garage-slide"), fireGarage);
 
 // ── Garage auto-close (countdown, attempts, disable) ──────────────────────
 // All the logic lives on the server; this renders `state.garage_auto` and
@@ -533,12 +567,10 @@ const lockPicker       = document.getElementById("lock-picker");
 const locksExpand      = document.getElementById("locks-expand");
 const locksDetail      = document.getElementById("locks-detail");
 const lockSlideWrap    = document.getElementById("lock-slide-wrap");
-const lockSlide        = document.getElementById("lock-slide");
 const lockActuateLabel = document.getElementById("lock-actuate-label");
 const locksSummary     = document.getElementById("locks-summary");
 const locksDot         = document.getElementById("locks-dot");
 
-const LOCK_ARM_THRESHOLD = 90;
 let selectedLock = null;
 let lockFiring = false;
 let locksBuilt = false;
@@ -599,15 +631,12 @@ function updateLockActuateLabel() {
   lockActuateLabel.textContent = `${name} is ${LOCK_WORD[status]} · ${action}`;
 }
 
-function resetLockSlide() {
-  if (!lockSlide) return;
-  lockSlide.value = 0;
-  lockSlideWrap.classList.remove("armed");
-}
+// Drag-only, same as the garage: tapping the track can't actuate a deadbolt.
+const lockSlider = makeSlideToActivate(lockSlideWrap, fireLock);
 
-lockSlide?.addEventListener("input", () => {
-  lockSlideWrap.classList.toggle("armed", parseInt(lockSlide.value) >= LOCK_ARM_THRESHOLD);
-});
+function resetLockSlide() {
+  lockSlider?.reset();
+}
 
 async function fireLock() {
   if (!selectedLock || lockFiring) return;
@@ -622,15 +651,8 @@ async function fireLock() {
     console.error(e);
   } finally {
     lockFiring = false;
-    resetLockSlide();
   }
 }
-
-// `change` fires on release for range inputs; fire if the user let go past the arm point.
-lockSlide?.addEventListener("change", () => {
-  if (parseInt(lockSlide.value) >= LOCK_ARM_THRESHOLD) fireLock();
-  else resetLockSlide();
-});
 
 function renderLocks() {
   buildLocksUI();

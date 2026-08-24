@@ -17,7 +17,7 @@
   <!-- ── Top bar (status-bar safe area + version) ── -->
   <div id="top-bar">
     <button id="settings-gear" aria-label="Settings">&#9881;</button>
-    <span id="app-version">v25</span>
+    <span id="app-version">v27</span>
   </div>
 
   <!-- ── Live camera ── -->
@@ -45,8 +45,9 @@
         <div class="lock-picker" id="lock-picker"></div>
         <div class="lock-actuate">
           <div class="lock-actuate-label" id="lock-actuate-label">Select a door above</div>
-          <div class="slide-activate lock-slide" id="lock-slide-wrap" hidden>
-            <input type="range" id="lock-slide" min="0" max="100" value="0" aria-label="Slide to toggle lock">
+          <div class="slide-activate lock-slide" id="lock-slide-wrap" role="button" aria-label="Slide to toggle lock" hidden>
+            <span class="slide-hint">Slide</span>
+            <div class="slide-thumb">&rsaquo;&rsaquo;</div>
           </div>
         </div>
       </div>
@@ -224,8 +225,9 @@
           <span>Disable</span>
         </label>
       </div>
-      <div class="slide-activate">
-        <input type="range" id="garage-slide" min="0" max="100" value="0" aria-label="Slide to activate garage">
+      <div class="slide-activate" id="garage-slide" role="button" aria-label="Slide to activate garage">
+        <span class="slide-hint">Slide to activate</span>
+        <div class="slide-thumb">&rsaquo;&rsaquo;</div>
       </div>
     </div>
 

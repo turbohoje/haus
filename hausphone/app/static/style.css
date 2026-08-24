@@ -347,49 +347,47 @@ html, body {
   display: flex;
   align-items: center;
 }
-.slide-activate input[type=range] {
+/* A real gesture starting on the thumb is required, so a tap at the far end of
+   the track can't actuate the door or a lock. */
+.slide-activate .slide-hint {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  background: transparent;
-  -webkit-appearance: none;
-  appearance: none;
-  cursor: grab;
+  inset: 0 0 0 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.slide-activate.dragging .slide-hint { opacity: 0; }
+.slide-activate .slide-thumb {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  bottom: 4px;
+  width: 56px;
   z-index: 2;
-}
-.slide-activate input[type=range]:active { cursor: grabbing; }
-.slide-activate input[type=range]::-webkit-slider-runnable-track {
-  height: 100%;
-  background: transparent;
-}
-.slide-activate input[type=range]::-moz-range-track {
-  height: 100%;
-  background: transparent;
-}
-.slide-activate input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 56px;
-  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 12px;
   background: var(--accent);
-  border: none;
   box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  color: #fff;
+  font-size: 1.3rem;
   cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  transition: transform 0.18s ease, background 0.15s;
 }
-.slide-activate input[type=range]::-moz-range-thumb {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
-  background: var(--accent);
-  border: none;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-  cursor: grab;
+.slide-activate.dragging .slide-thumb {
+  transition: background 0.15s;
+  cursor: grabbing;
 }
-.slide-activate.armed input[type=range]::-webkit-slider-thumb { background: var(--warn); }
-.slide-activate.armed input[type=range]::-moz-range-thumb     { background: var(--warn); }
+.slide-activate.armed .slide-thumb { background: var(--warn); }
 
 /* ── Status dot ── */
 .status-dot {

@@ -200,7 +200,8 @@ switches.
 
 UI: the first controls card (`data-element="door_locks"`) shows all four states at a glance —
 unlocked/unknown are highlighted for a nighttime "is everything locked?" check. Expanding reveals a
-door picker + slide-to-toggle (slide both directions, so no accidental single-tap actuation).
+door picker + slide-to-toggle (drag-only — see Slide-to-activate below — so no accidental
+single-tap actuation).
 Back Door was re-included as **node 25** after its original interview failed on node 4; it now
 interviews Complete and reports state normally.
 
@@ -293,6 +294,31 @@ Cards use a dark surface with rounded corners. There are two card patterns:
 </div>
 ```
 
+### Slide-to-activate (`makeSlideToActivate` in `app.js`)
+Used by the **Garage** card and the **Locks** slide-to-toggle — the two controls where an
+accidental tap has real consequences. Markup is a `.slide-activate` wrap holding a
+`.slide-hint` label and a `.slide-thumb`:
+
+```html
+<div class="slide-activate" id="garage-slide" role="button" aria-label="...">
+  <span class="slide-hint">Slide to activate</span>
+  <div class="slide-thumb">&rsaquo;&rsaquo;</div>
+</div>
+```
+
+`makeSlideToActivate(wrap, onComplete)` wires it up and returns `{ reset }`. It is
+deliberately **not** an `<input type=range>`: a range input jumps its value to wherever you
+tap, so tapping the right-hand end of the track fired the action in one touch — defeating the
+whole point of the gesture. Instead:
+
+- `pointerdown` must land **on the thumb**; the track is inert, so a tap anywhere does nothing.
+- The thumb follows the finger via pointer capture and arms at **90%** of the track.
+- The action fires on `pointerup` only while armed; letting go early springs the thumb back,
+  and `pointercancel` resets it.
+- The thumb is `touch-action: none` so the drag never turns into a page scroll.
+- Track width is measured on each `pointerdown`, so a wrap that starts `hidden` (the lock
+  slider) sizes correctly the first time it is used.
+
 ### Default card order (top to bottom)
 The camera is pinned above `#controls` and is never reordered. Everything below is the
 **default** order — each phone can reorder the cards from Settings (see below), and the
@@ -306,7 +332,7 @@ resulting order is stored per device in `localStorage`.
 6. **Water Feature** — single card, auto-off countdown timer (WeMo)
 7. **Living Fire** — single card, 90-min auto-off countdown
 8. **Master Fire** — single card, 90-min auto-off countdown
-9. **Garage** — single card, slide-to-activate (prevents pocket-dial); auto-close countdown
+9. **Garage** — single card, slide-to-activate (drag-only; prevents pocket-dial); auto-close countdown
    badge + status line ("Closing automatically in 14m 32s" / "Close attempt 1 of 2" /
    "Gave up after 2 attempts") and a **Disable** checkbox that resets when the door closes
 
@@ -335,7 +361,7 @@ Per-device prefs in `localStorage` under `haus-prefs`, driven by the `ELEMENTS` 
 
 ## PWA / Service Worker
 - Cache key is `"haus-vN"` in `sw.js` — **bump N whenever any static file changes** so phones receive the updated files
-- Current version: `haus-v25`
+- Current version: `haus-v27`
 - Keep the version label in `index.html` (`#app-version`) in sync with the cache key — it's shown in the top bar so you can verify which build a phone is running.
 - Network-first strategy for app shell (always fetches from server when online, falls back to cache)
 - Never caches `/image`, `/api/*`, or `/ws`
