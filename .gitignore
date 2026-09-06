@@ -3,6 +3,7 @@ ffmpeg/screen.txt
 ffmpeg/*.txt
 ffmpeg/cache/
 ffmpeg/snap_*.json
+tvsnap/snap_*.json
 ecobee/token*
 **/.venv
 **/.env
