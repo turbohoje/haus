@@ -81,6 +81,32 @@ Check `ts` before drawing: the snapshot survives in Storage across restarts, and
 a watch out of phone range for a day will happily render yesterday's
 temperatures as current. `wx_ts` / `cal_ts` age each half independently.
 
+## Drawing the airport rows
+
+`metar` is a list in a fixed order (KLMO, then KTEX), so it draws without
+sorting. One field needs care:
+
+```monkeyc
+// dir is a Number in degrees OR the String "VRB" for a variable wind.
+// Calling .format() on the String is a runtime error, so test the type.
+var dir = station["dir"];
+var dirText = (dir instanceof Lang.Number) ? dir.format("%03d") : dir.toString();
+
+// gst is absent unless gusting; cat is absent if the station reported none.
+var gust = station["gst"];
+var windText = (station["spd"] == 0 && dir == 0)
+    ? "calm"
+    : dirText + "/" + station["spd"].format("%02d")
+        + (gust == null ? "" : "G" + gust.format("%d"));
+```
+
+A station that did not report is missing from the list entirely rather than
+present and empty, so iterate the list — do not index it by position.
+
+`obs` is the observation's own epoch, separate from `metar_ts` (when the fetch
+last succeeded). A METAR can go stale while the fetch keeps working fine, which
+is the case worth showing: a two-hour-old observation is a real signal.
+
 ## To verify in the simulator
 
 - **Custom headers actually reach the worker.** Connect IQ requests go out

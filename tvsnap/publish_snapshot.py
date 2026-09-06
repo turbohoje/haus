@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Merge the ffmpeg JSON sidecars and PUT them to the Cloudflare worker.
+"""Merge the JSON sidecars and PUT them to the Cloudflare worker.
 
 Run from cron a minute after fetch_wx.py / fetch_cal.py, which write
 ffmpeg/snap_wx.json and ffmpeg/snap_cal.json as a by-product of building the
-TV overlays. Those two cannot publish directly: they run independently and
-would each clobber the other's half of a single R2 object.
+TV overlays, and alongside fetch_metar.py, which writes snap_metar.json here.
+None of the three can publish directly: they run independently and would each
+clobber the others' share of a single R2 object.
 
-Both sidecars are sticky — a failed fetch leaves the previous file in place —
-so their own timestamps are carried through as wx_ts / cal_ts. Without those a
-stale half looks identical to a fresh one on the watch.
+Every sidecar is sticky — a failed fetch leaves the previous file in place — so
+each one's own timestamp is carried through as wx_ts / cal_ts / metar_ts.
+Without those a stale part looks identical to a fresh one on the watch.
 
 Config comes from .env next to this script (gitignored):
 
@@ -28,9 +29,14 @@ FFMPEG_DIR = os.path.join(os.path.dirname(WD), 'ffmpeg')
 
 WX_FILE = os.path.join(FFMPEG_DIR, 'snap_wx.json')
 CAL_FILE = os.path.join(FFMPEG_DIR, 'snap_cal.json')
+# Not in ffmpeg/: the airport data never reaches the TV, so nothing there
+# produces it. See fetch_metar.py.
+METAR_FILE = os.path.join(WD, 'snap_metar.json')
 
 TIMEOUT = 20
-STALE_SECONDS = 3600  # sidecars refresh every 5 min; an hour old is a real fault
+# Sidecars refresh every 5 min, metar every 10; an hour old is a real fault
+# for any of them.
+STALE_SECONDS = 3600
 
 
 def load_env(path):
@@ -65,7 +71,7 @@ def load_sidecar(path):
         return None
 
 
-def build(wx, cal):
+def build(wx, cal, metar):
     now = int(time.time())
     snap = {'ts': now}
 
@@ -80,7 +86,13 @@ def build(wx, cal):
         snap['justin'] = cal.get('justin', [])
         snap['both'] = cal.get('both', [])
 
-    for label, ts in (('wx', snap.get('wx_ts')), ('cal', snap.get('cal_ts'))):
+    if metar:
+        snap['metar_ts'] = metar.get('ts')
+        snap['metar'] = metar.get('metar', [])
+
+    for label, ts in (('wx', snap.get('wx_ts')),
+                      ('cal', snap.get('cal_ts')),
+                      ('metar', snap.get('metar_ts'))):
         if ts and now - ts > STALE_SECONDS:
             print(f'warning: {label} data is {(now - ts) // 60} min old',
                   file=sys.stderr)
@@ -116,11 +128,12 @@ def main():
 
     wx = load_sidecar(WX_FILE)
     cal = load_sidecar(CAL_FILE)
-    if wx is None and cal is None:
-        sys.exit('neither sidecar is readable; nothing to publish')
+    metar = load_sidecar(METAR_FILE)
+    if wx is None and cal is None and metar is None:
+        sys.exit('no sidecar is readable; nothing to publish')
 
     try:
-        size, reply = publish(url, api_key, build(wx, cal))
+        size, reply = publish(url, api_key, build(wx, cal, metar))
     except urllib.error.HTTPError as e:
         sys.exit(f'publish rejected: HTTP {e.code} {e.read().decode()[:200]}')
     except (urllib.error.URLError, OSError) as e:

@@ -12,11 +12,15 @@ been verified, and which invariants will silently break the TV if you touch them
 is deployed but has no local `terraform.tfvars` or `.tfstate`). R2 also has to be
 enabled once in the dashboard; the free tier still wants a card on file.
 
-**Cron is installed** and runs every 5 minutes:
+**Cron is installed:**
 
 ```cron
+*/10   * * * * /home/turbohoje/haus/tvsnap/fetch_metar.py >/dev/null
 1-56/5 * * * * /home/turbohoje/haus/tvsnap/publish_snapshot.py >/dev/null
 ```
+
+`fetch_metar.py` runs regardless of deploy state and writes its sidecar locally;
+only the publisher needs `.env`.
 
 It exits 0 silently while `.env` is the unfilled template, so it is not currently
 mailing failures. That quiet path is deliberate — see the comment in `main()`.
@@ -26,13 +30,17 @@ Once `.env` is filled in it starts publishing with no further changes.
 
 Verified on this box:
 
-- Both sidecars are written without changing a byte of the six overlay files.
-  Confirmed twice: by hand, and by cron running the patched scripts at 10:40.
+- The wx and cal sidecars are written without changing a byte of the six overlay
+  files. Confirmed twice: by hand, and by cron running the patched scripts.
 - `worker.mjs` passes 12 unit tests (routing, missing/wrong/same-length-wrong
   key, invalid JSON, oversize, content-type, method-not-allowed).
+- `fetch_metar.py` parsing passes 12 cases: each of the four flight categories,
+  variable wind, gusting, calm, absent `fltCat`, an id-only row, response-order
+  independence, a missing station, and an empty 204. Its network-failure and
+  no-usable-observation paths were confirmed to leave the sidecar byte-identical.
 - End to end: the real `publish_snapshot.py` against the real `worker.mjs`,
-  709 bytes. Also its missing-sidecar, stale-sidecar, half-configured,
-  wrong-key and unreachable-host paths.
+  858 bytes with airports (709 without). Also its missing-sidecar,
+  stale-sidecar, half-configured, wrong-key and unreachable-host paths.
 
 **Not** verified: the Cloudflare deploy itself, and every line of watch-side
 code. `watch/README.md` has the specific list of things to check in the
@@ -75,8 +83,14 @@ from a fresh one on the watch. Do not collapse them into the single `ts`.
 
 **Payload size is a design constraint, not a nicety.** The consumer is a
 venu2plus watch face whose background process gets 65,536 bytes total, and the
-JSON is parsed into a Dictionary inside that pool. 709 bytes today. Anything that
+JSON is parsed into a Dictionary inside that pool. 858 bytes today. Anything that
 would grow this by an order of magnitude needs rethinking, not just adding.
+
+**`metar[].dir` is an int or the string `"VRB"`.** The one mixed-type field in
+the payload, and the likeliest thing to crash the watch face, since a bare
+`.format()` on a String is a runtime error. Kept mixed because it is what the
+METAR reports; if you ever normalise it, `watch/README.md` and the payload
+section of `README.md` both describe the current contract and must change too.
 
 ## Decisions already made — do not silently revisit
 
@@ -88,9 +102,31 @@ would grow this by an order of magnitude needs rethinking, not just adding.
   `cal_both` rows. This was explicit.
 - **Epoch seconds, not ISO 8601.** Monkey C has no date parser but takes an epoch
   straight into `Time.Moment`.
+- **Airports are watch-only and deliberately not on the TV.** Asked and
+  answered; this is why `fetch_metar.py` sits in `tvsnap/` and breaks the
+  otherwise-consistent "ffmpeg writes the sidecars" pattern.
+- **Flight category is collapsed to VFR/IFR.** The AWC API reports four states
+  and the user chose two, knowing MVFR and LIFR fold into `IFR`.
 - **R2, not KV.** The user picked R2. At ~700 bytes KV would have been the
   simpler fit and needs no dashboard signup — worth mentioning if they hit R2's
   payment-method wall, but do not switch it unilaterally.
+
+## The METAR source
+
+`https://aviationweather.gov/api/data/metar?ids=...&format=json` — NOAA's
+Aviation Weather Center. Free, no key, no registration. It computes `fltCat`
+server-side, which is why nothing here parses ceilings out of the raw METAR.
+
+Behaviours worth knowing before you touch `fetch_metar.py`, all confirmed live:
+
+- An unknown or offline station is **silently dropped** from the response array,
+  not reported as an error. Fewer rows than `STATIONS` is normal.
+- If it recognises **none** of the ids it answers **HTTP 204 with an empty
+  body**, which `json.loads` cannot parse. `fetch()` special-cases that.
+- `wdir` is an int **or the string `"VRB"`** (seen at KSFO).
+- `wgst` is **absent**, not null, when the wind is not gusting.
+- `cache-control: max-age=60`, so anything faster than a 1-minute poll is
+  returning cached bytes.
 
 ## Related
 
