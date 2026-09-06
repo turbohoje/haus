@@ -1,0 +1,12 @@
+import Toybox.Lang;
+
+// Copy to SnapshotConfig.mc and fill in. That filename is gitignored in
+// garmin_watch so the shared key does not land in the repo.
+//
+// The key is compiled into the .prg and therefore readable by anyone holding
+// the app. It is the same key the haus box publishes with, so treat losing the
+// watch as a reason to rotate it: change API_KEY in tvsnap/.env, re-run
+// deploy.sh, and rebuild the face.
+
+(:background) const SNAPSHOT_URL = "https://haus-tvsnap.<subdomain>.workers.dev/snapshot";
+(:background) const SNAPSHOT_KEY = "<shared key>";

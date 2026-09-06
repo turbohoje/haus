@@ -2,6 +2,7 @@ ffmpeg/imgproc/
 ffmpeg/screen.txt
 ffmpeg/*.txt
 ffmpeg/cache/
+ffmpeg/snap_*.json
 ecobee/token*
 **/.venv
 **/.env

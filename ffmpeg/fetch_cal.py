@@ -14,6 +14,7 @@ has the row to itself, so it gets the panel's full 62.
 """
 
 import datetime
+import json
 import os
 import sys
 from zoneinfo import ZoneInfo
@@ -95,11 +96,16 @@ def upcoming(events, now):
 
 
 def entries(events):
-    """The first EVENT_COUNT distinct events as (weekday, time, title) tuples.
+    """The first EVENT_COUNT distinct events as
+    (weekday, time, title, epoch, all_day) tuples.
 
     Deduped by title so a multi-day or daily-recurring event does not eat the
     whole list — each distinct event shows once, at its earliest occurrence.
     Kept unformatted so shared rows can be re-rendered at the wider width.
+
+    The trailing epoch/all_day carry the start moment for snap_cal.json. Only
+    the first three fields are ever compared or drawn, so they do not affect
+    the overlays — see split_shared().
     """
     out = []
     seen = set()
@@ -110,14 +116,22 @@ def entries(events):
         seen.add(key)
 
         when = start_dt.strftime('%H:%M') if start_dt else '  all'
-        out.append((DOW[day.weekday()], when, summary))
+        if start_dt is not None:
+            epoch = int(start_dt.timestamp())
+        else:
+            # All-day: pin to local midnight of the first day so the watch can
+            # render a date without needing to know the event had no time.
+            epoch = int(datetime.datetime.combine(
+                day, datetime.time.min, tzinfo=TZ).timestamp())
+        out.append((DOW[day.weekday()], when, summary, epoch, start_dt is None))
         if len(out) == EVENT_COUNT:
             break
     return out
 
 
 def format_rows(items, title_width):
-    return [f'{dow}{when} {summary[:title_width]}' for dow, when, summary in items]
+    return [f'{dow}{when} {summary[:title_width]}'
+            for dow, when, summary, _epoch, _all_day in items]
 
 
 def split_shared(left, right):
@@ -133,10 +147,11 @@ def split_shared(left, right):
     blocks, and this keeps the sides at 3 lines or fewer whenever there is
     anything in the middle for them to clear.
     """
-    shared = [item for item in left if item in set(right)]
-    common = set(shared)
-    return ([item for item in left if item not in common],
-            [item for item in right if item not in common],
+    right_keys = {item[:3] for item in right}
+    shared = [item for item in left if item[:3] in right_keys]
+    common = {item[:3] for item in shared}
+    return ([item for item in left if item[:3] not in common],
+            [item for item in right if item[:3] not in common],
             shared)
 
 
@@ -146,6 +161,43 @@ def write_atomic(path, lines):
     tmp = path + '.tmp'
     with open(tmp, 'w') as fh:
         fh.write(''.join(line + '\n' for line in lines))
+    os.replace(tmp, path)
+
+
+# ── JSON sidecar for the Cloudflare snapshot (see ../tvsnap/README.md) ───────
+# Jenny's calendar is deliberately not included: only Justin's own rows and the
+# rows both calendars share leave the house.
+
+SNAP_FILE = 'snap_cal.json'
+SNAP_TITLE_WIDTH = 60  # bounds the payload; real titles are far shorter
+
+
+def snap_rows(items):
+    """Display truncation is a panel-width artifact, so titles go out at their
+    full length here and the watch decides how much of one it can draw."""
+    return [{'s': epoch, 'all': 1 if all_day else 0,
+             't': summary[:SNAP_TITLE_WIDTH]}
+            for _dow, _when, summary, epoch, all_day in items]
+
+
+def write_snapshot(justin_only, shared):
+    """Reached only on a successful fetch, so a failed run leaves the previous
+    sidecar for publish_snapshot.py to re-send — same rule as the overlays."""
+    try:
+        write_atomic_json(os.path.join(WD, SNAP_FILE), {
+            'ts': int(datetime.datetime.now(TZ).timestamp()),
+            'justin': snap_rows(justin_only),
+            'both': snap_rows(shared),
+        })
+    except OSError as e:
+        # The overlays are the job; never fail the run over the snapshot.
+        print(f'{SNAP_FILE} not written: {e}', file=sys.stderr)
+
+
+def write_atomic_json(path, obj):
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as fh:
+        json.dump(obj, fh, separators=(',', ':'))
     os.replace(tmp, path)
 
 
@@ -185,6 +237,8 @@ def main():
     write_atomic(os.path.join(WD, JENNY_FILE), format_rows(jenny_only, SIDE_TITLE_WIDTH))
     write_atomic(os.path.join(WD, JUSTIN_FILE), format_rows(justin_only, SIDE_TITLE_WIDTH))
     write_atomic(os.path.join(WD, BOTH_FILE), format_rows(shared, SHARED_TITLE_WIDTH))
+
+    write_snapshot(justin_only, shared)
     return 0
 
 

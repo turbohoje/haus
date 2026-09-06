@@ -189,7 +189,8 @@ def abbreviate_string(s):
 # pollen      = svg_value(content,'/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[4]/div[2]/lib-pollen-tile/a/div[3]')
 # pollen_type = svg_value(content,'/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[4]/div[2]/lib-pollen-tile/a/div[3]/svg/text[1]')
 aqi         = xpath_value(aqi_content,'/html/body/app-root/app-health/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div[1]/div[1]/div/health-air-quality-index/div/div/div[1]/div/div/div/div[2]/div[2]/div[1]/div[2]')
-aqi_text    = abbreviate_string(str(xpath_value(aqi_content,'/html/body/app-root/app-health/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div[1]/div[1]/div/health-air-quality-index/div/div/div[1]/div/div/div/div[1]/div[2]/div[2]')))
+aqi_label   = str(xpath_value(aqi_content,'/html/body/app-root/app-health/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div[1]/div[1]/div/health-air-quality-index/div/div/div[1]/div/div/div/div[1]/div[2]/div[2]'))
+aqi_text    = abbreviate_string(aqi_label)
 # print(f"today {today_f} tonight_f {tonight_f} tomorrow {tomorrow_f}")
 # print(f"today preicp {today_precip} tonight_precip {tonight_precip} tomorrow precip {tomorrow_precip}")
 
@@ -244,3 +245,62 @@ else:
     
 wx_hour.close()
 wx_week.close()
+
+# ── JSON sidecar for the Cloudflare snapshot (see ../tvsnap/README.md) ───────
+# Written only after every overlay above succeeded, so this file inherits the
+# same sticky-on-failure behavior: a bad scrape exits before here and leaves the
+# previous sidecar in place for publish_snapshot.py to re-send.
+
+import time as _time
+
+
+def _snap_write(path, obj):
+    """Atomic, same reason as the overlays: the publisher may read mid-write."""
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as fh:
+        json.dump(obj, fh, separators=(',', ':'))
+    os.replace(tmp, path)
+
+
+def _snap_num(s):
+    """'  33.3' / '92' -> float/int, or None when the slot rendered as -nf-."""
+    try:
+        f = float(str(s).strip())
+    except (TypeError, ValueError):
+        return None
+    return int(f) if f == int(f) else round(f, 1)
+
+
+try:
+    # Temps stay in °C to match the display; absent sensors are omitted rather
+    # than sent as a sentinel, so the watch can tell "no reading" from "0.0".
+    _snap_temps = {k: round(v, 1) for k, v in _temps.items() if v is not None}
+    _snap_temps['out'] = _snap_temps.pop('oat', None)
+    _snap_temps = {k: v for k, v in _snap_temps.items() if v is not None}
+
+    _snap = {
+        'ts': int(_time.time()),
+        'temp_c': _snap_temps,
+        'aqi': {'v': _snap_num(aqi), 'label': aqi_label.strip()},
+        'hourly': [
+            {'label': lbl.strip(), 'f': _snap_num(f), 'c': _snap_num(c), 'precip': _snap_num(p)}
+            for lbl, f, c, p in (
+                (today_txt, today_f, tod_c, tod_p),
+                (tonight_txt, tonight_f, ton_c, ton_p),
+                (tomorrow_txt, tomorrow_f, tom_c, tom_p),
+            )
+        ],
+    }
+
+    # forecast.pkl is refreshed daily by fetch_week.py; the same >1 day staleness
+    # check the overlay uses decides whether the week block is worth sending.
+    if (date.today() - forecast['last']).days <= 1:
+        _snap['week'] = [
+            {'d': DAY_MAP[hi_lo_day[2]], 'hi': _snap_num(hi_lo_day[0]), 'lo': _snap_num(hi_lo_day[1])}
+            for hi_lo_day in forecast['values']
+        ]
+
+    _snap_write(os.path.join(current_file_directory, 'snap_wx.json'), _snap)
+except Exception as _e:
+    # The display is the job; the snapshot is a bonus. Never fail the run for it.
+    print(f"snap_wx.json not written: {_e}", file=sys.stderr)
