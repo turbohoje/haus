@@ -1,6 +1,7 @@
 # haus
 misc home automation
 
+
 ## TV
 current crontab setup
 ```
@@ -11,3 +12,7 @@ current crontab setup
 30 05 * * 4 /home/turbohoje/haus/tv/vizio_cron.py --display=master --min=100
 30 05 * * 5 /home/turbohoje/haus/tv/vizio_cron.py --display=master --min=100
 ```
+
+## sources data for
+
+- garmin watch
