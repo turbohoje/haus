@@ -26,7 +26,7 @@ SNAP_FILE = os.path.join(WD, 'snap_metar.json')
 
 # Order is preserved into the payload, so the watch can draw rows without
 # sorting. KLMO (the local field) first.
-STATIONS = ['KLMO', 'KTEX']
+STATIONS = ['KLMO', 'KTEX', 'KMTJ']
 
 URL = ('https://aviationweather.gov/api/data/metar'
        '?ids={ids}&format=json')

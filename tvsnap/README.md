@@ -51,7 +51,8 @@ airports, 858 B merged.
   "both": [{"s": 1788674400, "all": 1, "t": "UK Trip"}, ...],
   "metar_ts": 1788714557,    // when fetch_metar.py last succeeded
   "metar": [{"id": "KLMO", "cat": "VFR", "dir": 50, "spd": 3, "obs": 1788713700},
-            {"id": "KTEX", "cat": "VFR", "dir": 0,  "spd": 0, "obs": 1788713700}]
+            {"id": "KTEX", "cat": "VFR", "dir": 0,  "spd": 0, "obs": 1788713700},
+            {"id": "KMTJ", "cat": "VFR", "dir": 290, "spd": 7, "obs": 1788713700}]
 }
 ```
 

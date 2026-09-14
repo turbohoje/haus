@@ -83,7 +83,7 @@ temperatures as current. `wx_ts` / `cal_ts` age each half independently.
 
 ## Drawing the airport rows
 
-`metar` is a list in a fixed order (KLMO, then KTEX), so it draws without
+`metar` is a list in a fixed order (KLMO, KTEX, then KMTJ), so it draws without
 sorting. One field needs care:
 
 ```monkeyc
