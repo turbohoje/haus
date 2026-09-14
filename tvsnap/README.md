@@ -90,18 +90,26 @@ Choices worth knowing:
 | Route | Auth | Behavior |
 |---|---|---|
 | `GET /snapshot` | `X-API-Key` | The current document, `Content-Type: application/json`. 404 before the first publish. |
-| `PUT /snapshot` | `X-API-Key` | Replaces it. 400 on invalid JSON, 413 over 32 KB. |
+| `PUT /snapshot` | `X-API-Key` | Replaces it. 400 on invalid JSON, 413 over 32 KB, 403 with a read-only key. |
 | `GET /health` | none | `{"status":"ok"}` |
 
 Storage is one R2 object, last-write-wins, no history — the watch only ever
 wants what is true now, and the publisher re-sends every 5 minutes anyway.
 
-**One shared key does both read and write**, so a leaked key is also a write
-capability. That was the deliberate call: the key ships compiled into a
-sideloaded watch app, where a separate read-only key would have been exactly as
-exposed, and the sensitive half of this data (calendar titles) leaks on read
-alone. Rotating means changing `API_KEY` in `.env`, re-running `deploy.sh`, and
-rebuilding the face. The key is compared in constant time.
+**`API_KEY` carries read and write; the optional `READ_KEY` carries read only.**
+`READ_KEY` exists for other projects that only consume the JSON — they can `GET`
+the snapshot, and a leak cannot clobber it. Leave `READ_KEY` empty and the worker
+behaves exactly as it did when there was one key; `deploy.sh` omits the binding.
+
+It limits damage, not disclosure. The sensitive half of this data is calendar
+titles, and those leak on read alone, so hand `READ_KEY` out on the same trust
+basis as the full one. The watch face is the case in point — its key ships
+compiled into a sideloaded `.prg` either way — though pointing it at `READ_KEY`
+would at least mean a lost watch cannot overwrite the snapshot.
+
+Rotating either key means changing `.env` and re-running `deploy.sh`, plus
+rebuilding the face if it was the key the watch holds. Both are compared in
+constant time.
 
 ## Deploying
 
@@ -162,5 +170,10 @@ covering variable wind, gusts, calm, each flight category, a missing station and
 an empty 204; the publisher's success, missing-sidecar, stale-sidecar,
 wrong-key and unreachable-host paths all behave.
 
-Not yet verified: the actual Cloudflare deploy (needs the API token), and
-anything on the watch — see `watch/README.md`.
+Deployed 2026-09-06 to `https://haus-tvsnap.justin-476.workers.dev` and verified
+live: the full auth matrix across GET/PUT/DELETE, including `READ_KEY` reading
+but not writing. Note that Cloudflare's bot check rejects `Python-urllib`'s
+default User-Agent at the edge with error 1010, so any Python client here must
+set its own — `publish_snapshot.py` sends `haus-tvsnap/1.0`.
+
+Not yet verified: anything on the watch — see `watch/README.md`.

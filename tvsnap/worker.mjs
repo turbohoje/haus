@@ -9,9 +9,9 @@
  * consumer is a watch face that only ever wants "what is true now", and the
  * publisher re-sends every 5 minutes anyway.
  *
- * One shared key does both read and write, so a leaked key is also a write
- * capability. That is the accepted trade here — the key ships inside a
- * sideloaded watch app, where a second key would have been just as exposed.
+ * API_KEY carries read and write. READ_KEY, when set, carries read only — for
+ * consumers that only want the JSON and must never be able to clobber it. Both
+ * keys still see calendar titles, so read-only limits damage, not exposure.
  */
 
 const OBJECT_KEY = "snapshot.json";
@@ -29,7 +29,8 @@ export default {
       return json({ error: "not found" }, 404);
     }
 
-    if (!authorized(request, env)) {
+    const capability = authorized(request, env);
+    if (capability === null) {
       // 401 without a WWW-Authenticate header: this is a key check, not a
       // challenge the client can usefully respond to.
       return json({ error: "unauthorized" }, 401);
@@ -39,6 +40,11 @@ export default {
       return await handleGet(env);
     }
     if (request.method === "PUT") {
+      if (capability !== "rw") {
+        // Authenticated but not permitted, so 403 rather than 401: presenting a
+        // different key is the fix, retrying this one never is.
+        return json({ error: "read-only key" }, 403);
+      }
       return await handlePut(request, env);
     }
     return json({ error: "method not allowed" }, 405);
@@ -82,18 +88,32 @@ async function handlePut(request, env) {
 }
 
 /**
- * Compares against the API_KEY secret in constant time. A plain === leaks the
- * length of the matching prefix through timing; the key is long-lived and the
- * endpoint is public, so that is worth avoiding.
+ * Returns the capability the presented key carries — "rw" for API_KEY, "ro" for
+ * READ_KEY — or null when it matches neither. READ_KEY is optional: with it
+ * unset this collapses to the original single-key behaviour.
  */
 function authorized(request, env) {
   const presented = request.headers.get("X-API-Key");
-  if (!presented || !env.API_KEY) {
-    return false;
+  if (!presented) {
+    return null;
   }
+  if (env.API_KEY && matches(presented, env.API_KEY)) {
+    return "rw";
+  }
+  if (env.READ_KEY && matches(presented, env.READ_KEY)) {
+    return "ro";
+  }
+  return null;
+}
 
+/**
+ * Compares a presented key against a secret in constant time. A plain === leaks
+ * the length of the matching prefix through timing; the keys are long-lived and
+ * the endpoint is public, so that is worth avoiding.
+ */
+function matches(presented, secret) {
   const a = new TextEncoder().encode(presented);
-  const b = new TextEncoder().encode(env.API_KEY);
+  const b = new TextEncoder().encode(secret);
   if (a.byteLength !== b.byteLength) {
     return false;
   }

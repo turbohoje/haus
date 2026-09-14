@@ -6,11 +6,37 @@ been verified, and which invariants will silently break the TV if you touch them
 
 ## State as of 2026-09-06
 
-**Not deployed.** Everything except the Cloudflare deploy is done and tested.
-`deploy.sh` has never been run — it needs `CF_API_TOKEN` / `CF_ACCOUNT_ID` in
-`.env`, and no Cloudflare credentials exist anywhere on this box (`~/cf_metrics`
-is deployed but has no local `terraform.tfvars` or `.tfstate`). R2 also has to be
-enabled once in the dashboard; the free tier still wants a card on file.
+**Deployed and serving.** `https://haus-tvsnap.justin-476.workers.dev` — worker
+`haus-tvsnap` plus the `haus-tvsnap` R2 bucket, both created by `deploy.sh` on
+2026-09-06. The publisher is succeeding on cron; the live payload is 859 bytes.
+
+Credentials in `.env` were supplied by the user, not found on the box. Getting a
+working one took three tries, and the failures are worth knowing:
+
+- A token whose every permission group ends in `Read` clears `deploy.sh`'s
+  preflight and dies at the first mutation with 403 / code 10000
+  "Authentication error". Listing R2 buckets and listing worker scripts are
+  reads; they prove nothing about deploy rights.
+- **Account-owned tokens (`cfat_`) fail `/user/tokens/verify`** with 1000
+  "Invalid API Token" even when they work everywhere else. `deploy.sh` therefore
+  preflights with `/accounts/$CF_ACCOUNT_ID`, which validates the token and the
+  account id together. Do not "fix" it back. A user-owned token (`cfut_`) does
+  verify, so both kinds work with the current preflight.
+- The account's `tf-vai-lappy` token would also have deployed, but carries
+  write-everything including Billing and Account API Tokens. Not used, and not
+  something to park in a plaintext `.env` beside a cron job.
+
+**R2 was already enabled** — the account has the unrelated buckets `img` and
+`marmot`, and the workers `cdn` and `metrics-server` — so the free-tier
+payment-method wall never came up.
+
+**Cloudflare's bot check blocks `Python-urllib`.** The publisher's PUT was
+rejected at the edge with 403 / error 1010, before the worker ran, purely
+because urllib sends `User-Agent: Python-urllib/3.10`. Confirmed by swapping
+only the UA: `Python-urllib/3.10` → 403, anything else → the real response.
+`publish_snapshot.py` now sends `User-Agent: haus-tvsnap/1.0`. Any future
+Python HTTP client pointed at this worker needs the same, and the symptom looks
+exactly like a broken deploy — 1010 is an edge block, not a worker response.
 
 **Cron is installed:**
 
@@ -22,9 +48,11 @@ enabled once in the dashboard; the free tier still wants a card on file.
 `fetch_metar.py` runs regardless of deploy state and writes its sidecar locally;
 only the publisher needs `.env`.
 
-It exits 0 silently while `.env` is the unfilled template, so it is not currently
-mailing failures. That quiet path is deliberate — see the comment in `main()`.
-Once `.env` is filled in it starts publishing with no further changes.
+The quiet path in `main()` needs `WORKER_URL` and `API_KEY` both empty. They are
+now both set, so the publisher is live: every 5 minutes it tries to PUT, and
+exits non-zero because the worker does not exist yet. There is no MTA on this
+box, so cron discards that output rather than mailing it. It starts succeeding
+the moment `deploy.sh` runs, with no further changes.
 
 ## Verified vs not
 
@@ -33,7 +61,13 @@ Verified on this box:
 - The wx and cal sidecars are written without changing a byte of the six overlay
   files. Confirmed twice: by hand, and by cron running the patched scripts.
 - `worker.mjs` passes 12 unit tests (routing, missing/wrong/same-length-wrong
-  key, invalid JSON, oversize, content-type, method-not-allowed).
+  key, invalid JSON, oversize, content-type, method-not-allowed). Those 12 live
+  nowhere in the repo — they were ad hoc, and predate the two-key split.
+- The two-key `authorized()` passes 17 checks under node: the full matrix of
+  {rw, ro, wrong, same-length-wrong, absent, empty} against GET/PUT/DELETE, that
+  a rejected `ro` PUT leaves the stored object byte-identical, and that with
+  `READ_KEY` unset the old single-key behaviour returns exactly. Not re-verified
+  against the original 12, which no longer exist to run.
 - `fetch_metar.py` parsing passes 12 cases: each of the four flight categories,
   variable wind, gusting, calm, absent `fltCat`, an id-only row, response-order
   independence, a missing station, and an empty 204. Its network-failure and
@@ -42,8 +76,12 @@ Verified on this box:
   858 bytes with airports (709 without). Also its missing-sidecar,
   stale-sidecar, half-configured, wrong-key and unreachable-host paths.
 
-**Not** verified: the Cloudflare deploy itself, and every line of watch-side
-code. `watch/README.md` has the specific list of things to check in the
+Verified live against the deployed worker on 2026-09-06: `/health` unauthed 200;
+GET `/snapshot` 401 with no key and with a wrong key; 200 with `API_KEY` and with
+`READ_KEY`; PUT 200 with `API_KEY` and **403 with `READ_KEY`**; DELETE 405; an
+unknown path 404; and the stored object unchanged after the rejected write.
+
+**Not** verified: every line of watch-side code. `watch/README.md` has the specific list of things to check in the
 simulator — the load-bearing one is whether Connect IQ's custom `:headers`
 actually reach Cloudflare, because the whole auth design rests on it.
 
@@ -94,10 +132,14 @@ section of `README.md` both describe the current contract and must change too.
 
 ## Decisions already made — do not silently revisit
 
-- **One shared key for read and write.** Chosen knowingly. A read-only key would
-  not help: the sensitive part is calendar titles, which leak on read alone, and
-  the key ships compiled into a sideloaded `.prg` either way. Splitting it is a
-  small change to `authorized()` if the user asks, but it is not an oversight.
+- **Two keys as of 2026-09-06: `API_KEY` (read+write) and optional `READ_KEY`
+  (read only).** The user asked for a reduced-capability key for another project
+  that only consumes the JSON, which is the "if the user asks" case the previous
+  note here anticipated. `authorized()` now returns `"rw"`, `"ro"` or `null`, and
+  `PUT` requires `"rw"`. The original reasoning still holds for *exposure* —
+  calendar titles leak on read alone — so `READ_KEY` limits damage, not
+  disclosure, and is not a reason to hand it to anything less trusted. With
+  `READ_KEY` unset the behaviour is exactly the old single-key one.
 - **Jenny's calendar is not published.** Only `cal_justin` rows and the shared
   `cal_both` rows. This was explicit.
 - **Epoch seconds, not ISO 8601.** Monkey C has no date parser but takes an epoch

@@ -13,6 +13,7 @@
 #   Account | Account Settings    | Read
 #
 # Reads CF_API_TOKEN, CF_ACCOUNT_ID and API_KEY from .env beside this script.
+# READ_KEY is optional; set it to also bind a read-only key.
 
 set -euo pipefail
 
@@ -50,8 +51,12 @@ if not d.get('success'):
   fi
 }
 
+# Deliberately not /user/tokens/verify: that endpoint only knows user-owned
+# tokens and answers 1000 "Invalid API Token" for an account-owned one, even
+# when the token works fine everywhere else. Reading the account instead proves
+# the token and CF_ACCOUNT_ID together, which is what the rest of this needs.
 echo "==> verifying token"
-check "$(curl -sS "${auth[@]}" "$API/user/tokens/verify")" "token verify"
+check "$(curl -sS "${auth[@]}" "$API/accounts/$CF_ACCOUNT_ID")" "token verify"
 
 echo "==> creating R2 bucket $BUCKET_NAME"
 bucket=$(curl -sS "${auth[@]}" -X POST "$API/accounts/$CF_ACCOUNT_ID/r2/buckets" \
@@ -63,15 +68,20 @@ if ! grep -q '"success":true' <<<"$bucket" && ! grep -q '10004' <<<"$bucket"; th
 fi
 
 echo "==> uploading worker $WORKER_NAME"
-metadata=$(API_KEY="$API_KEY" BUCKET_NAME="$BUCKET_NAME" COMPAT_DATE="$COMPAT_DATE" python3 -c "
+metadata=$(API_KEY="$API_KEY" READ_KEY="${READ_KEY:-}" BUCKET_NAME="$BUCKET_NAME" \
+  COMPAT_DATE="$COMPAT_DATE" python3 -c "
 import json, os
+bindings = [
+    {'type': 'r2_bucket',   'name': 'SNAP',    'bucket_name': os.environ['BUCKET_NAME']},
+    {'type': 'secret_text', 'name': 'API_KEY', 'text': os.environ['API_KEY']},
+]
+# Left out entirely when unset, which keeps the worker single-key.
+if os.environ['READ_KEY']:
+    bindings.append({'type': 'secret_text', 'name': 'READ_KEY', 'text': os.environ['READ_KEY']})
 print(json.dumps({
     'main_module': 'worker.mjs',
     'compatibility_date': os.environ['COMPAT_DATE'],
-    'bindings': [
-        {'type': 'r2_bucket',   'name': 'SNAP',    'bucket_name': os.environ['BUCKET_NAME']},
-        {'type': 'secret_text', 'name': 'API_KEY', 'text': os.environ['API_KEY']},
-    ],
+    'bindings': bindings,
 }))")
 
 check "$(curl -sS "${auth[@]}" -X PUT \

@@ -106,7 +106,14 @@ def publish(url, api_key, snap):
         url.rstrip('/') + '/snapshot',
         data=body,
         method='PUT',
-        headers={'Content-Type': 'application/json', 'X-API-Key': api_key},
+        # urllib's default User-Agent (Python-urllib/3.x) trips Cloudflare's
+        # bot signature check, which rejects the request at the edge with a 403
+        # and error 1010 before the worker ever runs. Any ordinary UA passes.
+        headers={
+            'Content-Type': 'application/json',
+            'X-API-Key': api_key,
+            'User-Agent': 'haus-tvsnap/1.0',
+        },
     )
     with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
         return len(body), response.read().decode()
