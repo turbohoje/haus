@@ -8,6 +8,7 @@ from datetime import datetime
 from tvs_inc import tvs
 import pyvizio, time
 import json
+import os
 from datetime import datetime
 import sys
 sys.path.insert(0, "/home/turbohoje/haus/zwavejs")
@@ -241,8 +242,75 @@ def lady_den_floor():
     else:
         print("no change needed")
 
+def cron_owns(display):
+    """True while vizio_cron.py is still mid-run for this display.
+
+    vizio_cron.py powers the TV on, sleeps for --min minutes, then powers it
+    off, so its scheduled window lasts exactly as long as its process does.
+    Occupancy defers to it instead of cutting the morning on-time short.
+    Watching the process rather than the clock means changing the crontab
+    time or --min needs no matching change here.
+    """
+    want = f"--display={display}"
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            argv = open(f"/proc/{pid}/cmdline", "rb").read().split(b"\0")
+        except OSError:
+            continue  # exited between listdir and open, or not ours to read
+        argv = [a.decode("utf-8", "replace") for a in argv if a]
+        # Match real argv elements, not a substring of the whole command line:
+        # a shell whose script merely mentions vizio_cron.py holds the lot in
+        # one argv element and won't match either test.
+        if want in argv and any(a.endswith("vizio_cron.py") for a in argv):
+            return True
+    return False
+
+
+def living_room():
+    # tvs['kitchen'] really is this room's TV -- the two rooms are adjacent and
+    # share the one set. See the note in tvs_inc.py before renaming anything.
+    print("\nliving room")
+    # The 05:30 job owns the TV for its first 100 minutes; don't fight it.
+    if cron_owns('kitchen'):
+        print("vizio_cron.py holds this tv, leaving it alone")
+        return
+
+    # Current-motion only. The ZW100 holds tripped for param 3 (240s) after it
+    # last sees movement, so that timeout is the linger.
+    motion = zwq.motion_tripped(tvs['kitchen']['motion_node'])
+    print(f"Motion (living room): {motion}")
+
+    a = pyvizio.Vizio("pyvizio", tvs['kitchen']['ip'], 'kitchen', tvs['kitchen']['auth'])
+
+    state_desired = bool(motion)
+    state_current = a.get_power_state()
+
+    print("TV should be " + str(state_desired))
+    print("TV is " + str(state_current))
+
+    if state_desired != state_current:
+        if state_desired: #turn on
+            print("powering on")
+            a.pow_on()
+            time.sleep(5)
+
+            if tvs['kitchen'].get('input') is not None:
+                print("setting input")
+                a.set_input(tvs['kitchen']['input'])
+
+        else: #turn off
+            if a.get_current_input() == tvs['kitchen']['input']:
+                print("Shutting down")
+                a.pow_off()
+    else:
+        print("input: " + str(a.get_current_input()))
+        print("no change needed")
+
 if __name__ == "__main__":
     basement_office()
     lady_den()
+    living_room()
     #lady_den_floor()
     
