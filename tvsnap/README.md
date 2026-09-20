@@ -8,29 +8,32 @@ The consumer is the Venu 2 Plus watch face in
 [`garmin_watch`](https://github.com/turbohoje/garmin_watch); see `watch/`.
 
 ```
-fetch_wx.py    ──> ffmpeg/snap_wx.json   ─┐
-fetch_cal.py   ──> ffmpeg/snap_cal.json  ─┼─> publish_snapshot.py ──PUT──> worker ──> R2
-fetch_metar.py ──> tvsnap/snap_metar.json─┘                                  ▲
-                                                                       GET   │
-                                                                 watch face ─┘
+fetch_wx.py     ──> ffmpeg/snap_wx.json    ─┐
+fetch_cal.py    ──> ffmpeg/snap_cal.json   ─┤
+fetch_metar.py  ──> tvsnap/snap_metar.json ─┼─> publish_snapshot.py ──PUT──> worker ──> R2
+fetch_marmot.py ──> tvsnap/snap_marmot.json─┘                                  ▲
+                                                                         GET   │
+                                                                   watch face ─┘
 ```
 
 ## Why a separate publisher
 
-`fetch_wx.py`, `fetch_cal.py` and `fetch_metar.py` run as independent cron jobs.
-None has the others' data, so if each PUT to a single R2 object they would take
-turns clobbering the rest of it. They write local JSON sidecars instead and
-`publish_snapshot.py` merges them into one document.
+`fetch_wx.py`, `fetch_cal.py`, `fetch_metar.py` and `fetch_marmot.py` run as
+independent cron jobs. None has the others' data, so if each PUT to a single R2
+object they would take turns clobbering the rest of it. They write local JSON
+sidecars instead and `publish_snapshot.py` merges them into one document.
 
-`fetch_metar.py` lives here rather than in `ffmpeg/` because the airport data is
-the one part of the payload that is **not** on the TV — nothing in the display
-produces or consumes it, so there is no overlay for it to be a by-product of.
+`fetch_metar.py` and `fetch_marmot.py` live here rather than in `ffmpeg/`
+because the airport data and the Tempest reading are the parts of the payload
+that are **not** on the TV — nothing in the display produces or consumes them,
+so there is no overlay for them to be a by-product of.
 
-Both sidecars inherit the display's sticky-on-failure rule: a failed scrape or
-calendar fetch exits before writing, so the previous file stays. That means a
-sidecar can be arbitrarily old while still parsing fine, which is why each
-source's own timestamp is carried through as `wx_ts` / `cal_ts` — without them a
-stale half is indistinguishable from a fresh one on the watch.
+Every sidecar inherits the display's sticky-on-failure rule: a failed scrape,
+calendar fetch or query exits before writing, so the previous file stays. That
+means a sidecar can be arbitrarily old while still parsing fine, which is why
+each source's own timestamp is carried through as `wx_ts` / `cal_ts` /
+`metar_ts` / `marmot_ts` — without them a stale part is indistinguishable from a
+fresh one on the watch.
 
 ## The payload
 
@@ -143,13 +146,18 @@ and secret bindings, enables the workers.dev route, and writes the resulting
 
 ## Cron
 
-`publish_snapshot.py` needs both sidecars fresh, so it runs a minute after the
-two fetches. Those are on `*/5`, so:
+`publish_snapshot.py` needs the sidecars fresh, so it runs a minute after the
+fetches. Those are on `*/5`, so:
 
 ```cron
 */10   * * * * /home/turbohoje/haus/tvsnap/fetch_metar.py >/dev/null
+*/5    * * * * /home/turbohoje/haus/tvsnap/fetch_marmot.py >/dev/null
 1-56/5 * * * * /home/turbohoje/haus/tvsnap/publish_snapshot.py >/dev/null
 ```
+
+`fetch_marmot.py` is on `*/5` to match the 300 s loop in
+`~/cf_metrics/tempest/scrape.py` that feeds it — the row it reads only changes
+that often, so it lands about a minute before the publisher fires.
 
 `fetch_metar.py` is on its own 10-minute cycle rather than the display's 5.
 METARs are issued hourly around :55 with SPECIs in between when conditions
@@ -159,7 +167,7 @@ sidecar about a minute old when the publisher next fires.
 
 It exits non-zero and publishes nothing on a transport failure; the previous
 snapshot stays up and the next tick retries. A missing sidecar is not fatal —
-it publishes the half it has, and the missing `wx_ts`/`cal_ts` says which.
+it publishes the parts it has, and the missing `*_ts` says which.
 
 ## Testing without deploying
 
@@ -176,6 +184,11 @@ validation paths pass 12 unit tests; `fetch_metar.py`'s parsing passes 12 cases
 covering variable wind, gusts, calm, each flight category, a missing station and
 an empty 204; the publisher's success, missing-sidecar, stale-sidecar,
 wrong-key and unreachable-host paths all behave.
+
+`fetch_marmot.py`'s parsing and location filter pass 11 cases covering a normal
+row, an int value, a row tagged with another location, a stale reading, an empty
+result and a malformed timestamp; its sticky-on-failure path is verified against
+a real 403, an unreachable host, missing keys and a missing `.env`.
 
 Deployed 2026-09-06 to `https://haus-tvsnap.justin-476.workers.dev` and verified
 live: the full auth matrix across GET/PUT/DELETE, including `READ_KEY` reading
