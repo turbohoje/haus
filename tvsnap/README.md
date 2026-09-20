@@ -49,6 +49,8 @@ airports, 858 B merged.
   "cal_ts": 1788712804,      // when fetch_cal.py last succeeded
   "justin": [{"s": 1788789600, "all": 0, "t": "pay jim"}, ...],
   "both": [{"s": 1788674400, "all": 1, "t": "UK Trip"}, ...],
+  "marmot_ts": 1788714290,   // when fetch_marmot.py last succeeded
+  "marmot": {"c": 15.3, "obs": 1788714241},
   "metar_ts": 1788714557,    // when fetch_metar.py last succeeded
   "metar": [{"id": "KLMO", "cat": "VFR", "dir": 50, "spd": 3, "obs": 1788713700},
             {"id": "KTEX", "cat": "VFR", "dir": 0,  "spd": 0, "obs": 1788713700},
@@ -72,6 +74,11 @@ Choices worth knowing:
   check the `wx_forecast_week.txt` overlay makes.
 - **Jenny's calendar is not published.** Only `cal_justin` rows and the shared
   `cal_both` rows leave the house.
+- **`marmot` is a different site from `temp_c.out`,** despite both being called
+  `oat` upstream. `temp_c.out` is zwave-js node 8 (the Patio sensor at the house);
+  `marmot` is a Tempest station, read back out of the metrics-server worker that
+  `~/cf_metrics/tempest/scrape.py` already feeds. It carries its own `obs` epoch
+  because a Tempest can stop reporting while the fetch keeps succeeding.
 - **`dir` is an integer in degrees, or the string `"VRB"`.** That mixed type is
   what the METAR itself reports for a variable wind, and it is passed through
   rather than flattened. Any consumer has to type-check it — on the watch that

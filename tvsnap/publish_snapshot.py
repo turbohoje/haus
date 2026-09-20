@@ -29,6 +29,8 @@ FFMPEG_DIR = os.path.join(os.path.dirname(WD), 'ffmpeg')
 
 WX_FILE = os.path.join(FFMPEG_DIR, 'snap_wx.json')
 CAL_FILE = os.path.join(FFMPEG_DIR, 'snap_cal.json')
+# Not an ffmpeg by-product: written by fetch_marmot.py next to this script.
+MARMOT_FILE = os.path.join(WD, 'snap_marmot.json')
 # Not in ffmpeg/: the airport data never reaches the TV, so nothing there
 # produces it. See fetch_metar.py.
 METAR_FILE = os.path.join(WD, 'snap_metar.json')
@@ -71,7 +73,7 @@ def load_sidecar(path):
         return None
 
 
-def build(wx, cal, metar):
+def build(wx, cal, metar, marmot):
     now = int(time.time())
     snap = {'ts': now}
 
@@ -90,9 +92,14 @@ def build(wx, cal, metar):
         snap['metar_ts'] = metar.get('ts')
         snap['metar'] = metar.get('metar', [])
 
+    if marmot:
+        snap['marmot_ts'] = marmot.get('ts')
+        snap['marmot'] = marmot.get('marmot')
+
     for label, ts in (('wx', snap.get('wx_ts')),
                       ('cal', snap.get('cal_ts')),
-                      ('metar', snap.get('metar_ts'))):
+                      ('metar', snap.get('metar_ts')),
+                      ('marmot', snap.get('marmot_ts'))):
         if ts and now - ts > STALE_SECONDS:
             print(f'warning: {label} data is {(now - ts) // 60} min old',
                   file=sys.stderr)
@@ -135,12 +142,13 @@ def main():
 
     wx = load_sidecar(WX_FILE)
     cal = load_sidecar(CAL_FILE)
+    marmot = load_sidecar(MARMOT_FILE)
     metar = load_sidecar(METAR_FILE)
-    if wx is None and cal is None and metar is None:
+    if wx is None and cal is None and metar is None and marmot is None:
         sys.exit('no sidecar is readable; nothing to publish')
 
     try:
-        size, reply = publish(url, api_key, build(wx, cal, metar))
+        size, reply = publish(url, api_key, build(wx, cal, metar, marmot))
     except urllib.error.HTTPError as e:
         sys.exit(f'publish rejected: HTTP {e.code} {e.read().decode()[:200]}')
     except (urllib.error.URLError, OSError) as e:
