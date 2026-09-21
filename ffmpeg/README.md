@@ -152,13 +152,43 @@ Only the weekday is shown, so an event more than a week out is ambiguous
   placeholders. Volta is worth a slot, just not under a title that reads as a
   stop word, so `relabel()` unwraps it; the rest say nothing and are dropped.
   Widening that to another one is a matter of adding it to `VISIBLE_BUSY`.
-  Note this lands *before* the title dedupe below, so a day of back-to-back
+  Note this lands *before* the run-merging below, so a morning of back-to-back
   Volta blocks takes one line, at the earliest of them, rather than four.
-- **Deduped by title**, so a multi-day or daily-recurring event shows once at
-  its earliest occurrence instead of filling all 4 lines.
+- **Repeats of a title merge only while they run back to back.** A title that
+  picks up again after `MERGE_GAP` (15 min) of clear time is a separate
+  commitment and gets its own row, so a day broken up by a real gap shows both
+  halves. The gap is measured from the previous block's **end** to the next
+  block's **start** and the test is `< MERGE_GAP`, so an exactly 15-minute gap
+  counts as separate. A merged run keeps extending, so three touching blocks
+  are one row rather than two, and overlapping blocks take the later end.
+
+  Volta blocks on a Tuesday, as an example:
+
+  ```
+  07:30-08:00               ->  T07:30 Volta
+  09:00-09:30   gap 60 min  ->  T09:00 Volta
+  09:30-10:00   contiguous      merged into the row above
+  10:00-10:15   contiguous      merged into the row above
+  ```
+
+  Two consequences of dropping the old title-only dedupe, both livable but
+  worth knowing when the block looks wrong: a badly fragmented day can fill
+  all 4 rows by itself (a Wednesday of 15- and 25-minute gaps gives three
+  Volta rows) and crowd later events off until the early blocks pass, and a
+  daily-recurring *timed* event now gets a row per day instead of one row at
+  its earliest occurrence.
+- **All-day events keep one row per title**, since there are no end times to
+  measure a gap against. A multi-day or repeating all-day event still shows
+  once, at its earliest occurrence.
 - **Timed events must not have started yet.** All-day events count through the
   end of their last day — requiring `start > now` would drop an all-day event
   at midnight on the day it happens.
+
+Times are drawn in `America/Denver` regardless of the zone the invite was
+written in, so a mirrored block can land an hour off the wall-clock time the
+original invite shows — the Volta feed publishes some meetings with
+`TZID=Pacific Standard Time`, and a 09:30 Pacific meeting is correctly drawn
+as `10:30`. Worth checking before assuming a row is on the wrong line.
 
 Failure behavior: the three files have to agree on which rows are shared, so a
 failed fetch rewrites none of them and every overlay keeps its last good

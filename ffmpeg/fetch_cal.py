@@ -38,6 +38,13 @@ BOTH_FILE = 'cal_both.txt'
 EVENT_COUNT = 4
 LOOKAHEAD_DAYS = 60
 
+# Two blocks with the same title are one row while they run back to back; once
+# there is at least this much clear time between them they are separate things
+# and each gets a row. Sized for the 'busy (Volta)' blocks cal_sync.py mirrors
+# in, where a morning of touching blocks is one commitment but a real break in
+# the day is two.
+MERGE_GAP = datetime.timedelta(minutes=15)
+
 # Every row is a 1-char weekday + 5-char time + space, then the title.
 SIDE_TITLE_WIDTH = 22    # 7 + 22 = 29 chars, half the panel less the gap
 SHARED_TITLE_WIDTH = 55  # 7 + 55 = 62 chars, the full panel width
@@ -72,6 +79,9 @@ def upcoming(events, now):
     An all-day event started at midnight, so requiring start > now would drop
     it for the whole day it is happening. All-day events count as upcoming
     through the end of their last day instead.
+
+    Each row carries its end time so entries() can measure the gap to the next
+    block of the same title; an all-day event has no end time to carry.
     """
     today = now.date()
     out = []
@@ -86,21 +96,26 @@ def upcoming(events, now):
             end_date = datetime.date.fromisoformat(ev['end']['date'])
             if end_date <= today:
                 continue
-            out.append((summary, None, datetime.date.fromisoformat(start['date'])))
+            out.append((summary, None, datetime.date.fromisoformat(start['date']), None))
         else:
             start_dt = datetime.datetime.fromisoformat(start['dateTime']).astimezone(TZ)
             if start_dt <= now:
                 continue
-            out.append((summary, start_dt, start_dt.date()))
+            end_dt = datetime.datetime.fromisoformat(
+                ev['end']['dateTime']).astimezone(TZ)
+            out.append((summary, start_dt, start_dt.date(), end_dt))
     return out
 
 
 def entries(events):
-    """The first EVENT_COUNT distinct events as
+    """The first EVENT_COUNT events as
     (weekday, time, title, epoch, all_day) tuples.
 
-    Deduped by title so a multi-day or daily-recurring event does not eat the
-    whole list — each distinct event shows once, at its earliest occurrence.
+    Repeats of a title collapse while they run back to back, so a morning of
+    touching Volta blocks is one row rather than four, but a title that picks
+    up again after MERGE_GAP of clear time is a separate commitment and gets
+    its own row. All-day events have no times to measure a gap against, so
+    they keep one row per title.
     Kept unformatted so shared rows can be re-rendered at the wider width.
 
     The trailing epoch/all_day carry the start moment for snap_cal.json. Only
@@ -108,12 +123,22 @@ def entries(events):
     the overlays — see split_shared().
     """
     out = []
-    seen = set()
-    for summary, start_dt, day in events:
+    last_end = {}  # title -> end of the run currently holding its row
+    for summary, start_dt, day, end_dt in events:
         key = summary.lower()
-        if key in seen:
-            continue
-        seen.add(key)
+        if key in last_end:
+            prev_end = last_end[key]
+            if prev_end is None or start_dt is None:
+                # An all-day event on one side of the comparison: no gap to
+                # measure, so the title keeps the single row it already has.
+                continue
+            if start_dt - prev_end < MERGE_GAP:
+                # Resumes too soon to be its own thing. Extend the run so a
+                # chain of touching blocks merges the whole way down, and use
+                # the later end in case two of them overlap.
+                last_end[key] = max(prev_end, end_dt)
+                continue
+        last_end[key] = end_dt
 
         when = start_dt.strftime('%H:%M') if start_dt else '  all'
         if start_dt is not None:
