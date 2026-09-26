@@ -200,48 +200,6 @@ def lady_den():
         print("input: " + str(a.get_current_input()))
         print("no change needed")
 
-def lady_den_floor():
-    print("\nlady den floor")
-    # Current-motion only (zwave-js has no LastTrip epoch; old 15-min linger dropped).
-    motion = zwq.motion_tripped(tvs['ladyden']['motion_node'])
-    current_temp = zwq.temperature_c(tvs['ladyden']['temp_node'])
-    print(f"Motion (lady den): {motion}")
-
-    state_current = bool(zwq.switch_on(tvs['ladyden']['floor_node']))
-
-    #turn on 4-7 am every weekday
-    current_time = datetime.now()
-    current_hour = current_time.hour
-    current_weekday = current_time.weekday()
-
-    if current_weekday < 5 and 4 <= current_hour < 7:
-        pre_warm = True
-    else:
-        pre_warm = False
-
-    state_desired = bool(motion) or pre_warm
-
-    #max temp
-    print("current temp")
-    print(current_temp)
-    if current_temp is not None and current_temp > tvs['ladyden']['temp_max']:
-        state_desired = False
-
-
-    print("Floor should be " + str(state_desired))
-    print("Floor is " + str(state_current))
-
-    if state_desired != state_current:
-        if state_desired: #turn on
-            print("powering on water pump")
-            zwq.set_switch(tvs['ladyden']['floor_node'], True)
-            time.sleep(5)
-
-        else: #turn off
-            zwq.set_switch(tvs['ladyden']['floor_node'], False)
-    else:
-        print("no change needed")
-
 def cron_owns(display):
     """True while vizio_cron.py is still mid-run for this display.
 
@@ -312,5 +270,4 @@ if __name__ == "__main__":
     basement_office()
     lady_den()
     living_room()
-    #lady_den_floor()
     

@@ -29,6 +29,11 @@ docker compose up -d --build
 docker logs hausphone          # check startup
 docker compose down            # stop
 ```
+`docker-compose.yml` sets **`TZ=America/Denver`**. The `python:3.12-slim` image is UTC
+otherwise, which would put the LD Floor warm window six hours out; `zwave.py` pins the zone
+itself via `HAUS_TZ` so the schedule is right even if that env var goes missing, but the
+container variable keeps log timestamps readable.
+
 `--build` is **not optional for front-end changes**: the Dockerfile does `COPY app/ ./app/`, and only
 `imgproc` and `certs` are bind-mounted — the static files are baked into the image, so a bare
 `restart` keeps serving the old `app.js`/`style.css`.
@@ -136,7 +141,7 @@ Command classes in play:
 | `light_east` | 17 | 2 | Lght E | ZW140 dual-relay |
 | `attic1` | 16 | 1 | Attic1 | ZW140 dual-relay |
 | `attic2` | 16 | 2 | Attic2 | ZW140 dual-relay |
-| `ld_floor` | 24 | — | LD Floor | Lady-den floor pump |
+| `ld_floor` | 24 | — | LD Floor | Lady-den floor pump; auto warm + occupancy (below) |
 | `l_fire` | 14 | — | Living Fire | auto-off 90 min |
 | `m_fire` | 10 | 1 | Master Fire | ZW140; auto-off 90 min. If it doesn't toggle, try endpoint 2 |
 | `garage` | 6 | — | Garage | Barrier Operator; slide-to-activate; auto-close watcher |
@@ -183,6 +188,48 @@ open detected ──15 min──> attempt 1 ──60 s──> attempt 2 ──60
   `{enabled, phase: idle|counting|closing|failed, attempts, max_attempts, remaining, countdown_seconds}`.
 - Everything is in-memory: a container restart re-arms from the door's current state, so a door
   that is open when the app boots gets a full fresh 15 minutes.
+
+#### LD Floor automation (auto warm / occupancy)
+The lady-den floor pump has two house-wide options, exposed as checkboxes behind the card's
+expand bar (`# ── LD Floor automation ──` in `zwave.py`):
+
+| Checkbox | Behaviour |
+|----------|-----------|
+| **Auto warm on weekdays** | floor on at **04:00**, off at **07:00**, Mon–Fri |
+| **Auto on with occupancy** | floor on when the lady-den ZW100 (**node 9**) sees motion, off when it clears |
+
+- Constants: `LD_SENSOR_NODE` (9), `LD_TEMP_MAX_C` (22.0), `LD_WARM_ON_HOUR` (4),
+  `LD_WARM_OFF_HOUR` (7), `LD_WARM_TICK` (30 s), `LD_TZ` (`HAUS_TZ`, default `America/Denver`).
+- This **replaces `tv/tv_vera_cron.py::lady_den_floor()`**, which was removed. That job
+  recomputed `motion or pre_warm` every minute and re-asserted it, so it undid anything you
+  did by hand within 60 s. (It had been commented out at the call site since `d9c59ae`.)
+- **Edge-triggered, not polled.** Each option acts only on a *transition* — a window
+  boundary, a motion change, or the checkbox itself being ticked — so a manual toggle stands
+  until the next edge. Consequences worth knowing:
+  - A container restart **mid-window is not an edge**: the floor stays as it is rather than
+    undoing a manual off. Same for a restart while the room is occupied.
+  - Ticking a box applies it **immediately** if its condition already holds (mid-window, or
+    motion present); unticking never moves the floor.
+  - The window boundary is tracked even while **Auto warm** is unchecked, so re-ticking the
+    box later can't replay a boundary that has already passed.
+- **Node 9 needs no device plumbing.** It isn't in `DEVICES` (it's a sensor, not a switch),
+  but `_hydrate`/`_handle_event` already cache *every* node's values, so motion arrives as a
+  push event on the existing socket. The hook sits in `_handle_event` next to the Central
+  Scene and Door Lock branches.
+- **Temperature cap.** Above `LD_TEMP_MAX_C` neither option will turn the floor **on**
+  (logged as `suppressed`). Turning off, and anything you do from the card, always goes
+  through — the cap is a gate on auto-on, not a thermostat that cuts an already-running
+  floor. The ZW100 reports °F, and `_values` stores values without metadata, so
+  `_capture_ld_temp_unit()` grabs the unit from the hydrate dump to convert.
+- **Warm beats occupancy inside the window:** motion clearing at 05:00 won't cut the warm
+  window short. At 07:00, if the room is still occupied, the floor stays on.
+- State lives in `/certs/ld_floor_auto.json` (same persistent volume as the push keys) so the
+  checkboxes survive a rebuild. A missing file leaves **both options on**.
+- Exposed as the `ld_floor_auto` snapshot key: `{warm, occupancy, in_warm_window,
+  warm_on_hour, warm_off_hour, motion, temp_c, temp_max_c, too_warm}`. The card's dim status
+  line renders it, so a floor held off by the temp cap doesn't look like a broken checkbox.
+- The **lady-den TV** (`tv/tv_vera_cron.py::lady_den()`) still runs off this same sensor from
+  cron, independently. Only the floor moved into the PWA.
 
 #### Door Locks
 Four Allegion BE469 deadbolts (S0-secured), in `LOCKS` in `zwave.py` (separate from `DEVICES` since
@@ -328,7 +375,7 @@ resulting order is stored per device in `localStorage`.
 2. **M.Fan / M.Light** — paired card, fan speed + brightness sliders
 3. **Lght E / Lght W** — paired card, no sliders (E on left, W on right)
 4. **Attic1 / Attic2** — paired card; expand-down timers (delay-on, off-timer)
-5. **LD Floor** — single card
+5. **LD Floor** — single card; expand-down automation checkboxes (auto warm, occupancy)
 6. **Water Feature** — single card, auto-off countdown timer (WeMo)
 7. **Living Fire** — single card, 90-min auto-off countdown
 8. **Master Fire** — single card, 90-min auto-off countdown
@@ -361,7 +408,7 @@ Per-device prefs in `localStorage` under `haus-prefs`, driven by the `ELEMENTS` 
 
 ## PWA / Service Worker
 - Cache key is `"haus-vN"` in `sw.js` — **bump N whenever any static file changes** so phones receive the updated files
-- Current version: `haus-v27`
+- Current version: `haus-v28`
 - Keep the version label in `index.html` (`#app-version`) in sync with the cache key — it's shown in the top bar so you can verify which build a phone is running.
 - Network-first strategy for app shell (always fetches from server when online, falls back to cache)
 - Never caches `/image`, `/api/*`, or `/ws`
@@ -403,13 +450,14 @@ POST /api/attic/off-timer           { "armed", "duration_seconds" }
 POST /api/lock/{lock_key}           { "locked": true|false }
 POST /api/wemo/{device_name}/power  { "on": true|false }
 POST /api/garage/auto-close         { "enabled": true|false }
+POST /api/ld-floor/auto             { "warm": bool, "occupancy": bool }   — either key optional
 GET  /api/push/key                  — { available, key }  (VAPID public key)
 POST /api/push/subscribe            — body is the raw PushSubscription JSON
 POST /api/push/unsubscribe          { "endpoint": "..." }
 POST /api/push/test                 — fan out a test notification; { "sent": n }
 ```
 
-State snapshot keys: `fan`, `zwave`, `attic_timers`, `locks`, `wemo`, `garage_auto`.
+State snapshot keys: `fan`, `zwave`, `attic_timers`, `ld_floor_auto`, `locks`, `wemo`, `garage_auto`.
 
 Z-Wave state is push-based (kept live by driver events). Other device types are cached in-memory and re-polled from hardware every 60 seconds. On WebSocket connect (i.e. app load) Z-Wave state is refreshed if the cache is older than 3 seconds — this catches switches flipped externally (physical remote, etc.). Other device types serve cached state on connect.
 
@@ -428,7 +476,7 @@ hausphone/
 │   ├── push.py             ← Web Push (VAPID) — garage alerts
 │   ├── devices/
 │   │   ├── fan.py          ← aiobafi6 wrapper
-│   │   ├── zwave.py        ← zwave-js WebSocket client + scene engine + garage auto-close
+│   │   ├── zwave.py        ← zwave-js WebSocket client + scene engine + garage auto-close + LD Floor automation
 │   │   └── wemo.py         ← pywemo wrapper + auto-off timer
 │   └── static/
 │       ├── index.html      ← PWA shell

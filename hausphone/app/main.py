@@ -129,6 +129,7 @@ def _collect_state() -> dict:
         "fan": fan.get_state(),
         "zwave": zwave.get_state(),
         "attic_timers": zwave.get_attic_timers(),
+        "ld_floor_auto": zwave.get_ld_floor_auto(),
         "locks": zwave.get_locks_state(),
         "wemo": wemo.get_state(),
         "garage_auto": zwave.get_garage_auto(),
@@ -213,6 +214,17 @@ async def attic_off_timer(body: dict = Body(...)):
         int(body.get("duration_seconds") or 0),
     )
     await broadcast({"type": "state", "data": {"attic_timers": state}})
+    return state
+
+
+# --------------------------------------------------------------------------
+# LD Floor automation (auto warm on weekdays, auto on with occupancy)
+# --------------------------------------------------------------------------
+@app.post("/api/ld-floor/auto")
+async def ld_floor_auto(body: dict = Body(...)):
+    state = await zwave.set_ld_floor_auto(body.get("warm"), body.get("occupancy"))
+    await broadcast({"type": "state", "data": {"ld_floor_auto": state,
+                                               "zwave": zwave.get_state()}})
     return state
 
 

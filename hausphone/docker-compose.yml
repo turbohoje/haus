@@ -8,6 +8,9 @@ services:
       - hausphone-certs:/certs
     environment:
       - IMAGE_PATH=/imgproc/output.jpg
+      # The image is UTC by default; the LD Floor warm window is wall-clock local.
+      # zwave.py also pins the zone itself (HAUS_TZ), this keeps log stamps honest.
+      - TZ=America/Denver
     network_mode: host  # needed for pywemo UDP discovery and direct LAN device access
 
 volumes:

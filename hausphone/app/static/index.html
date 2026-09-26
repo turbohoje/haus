@@ -10,14 +10,14 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>Haus</title>
-  <link rel="stylesheet" href="/static/style.css?v=25">
+  <link rel="stylesheet" href="/static/style.css?v=28">
 </head>
 <body>
 
   <!-- ── Top bar (status-bar safe area + version) ── -->
   <div id="top-bar">
     <button id="settings-gear" aria-label="Settings">&#9881;</button>
-    <span id="app-version">v27</span>
+    <span id="app-version">v28</span>
   </div>
 
   <!-- ── Live camera ── -->
@@ -178,6 +178,24 @@
         <span class="card-label">LD Floor</span>
         <button class="toggle-btn" id="zwave-ld-floor-toggle">OFF</button>
       </div>
+      <button class="card-expand-row" id="ld-floor-expand" aria-label="Automation">
+        <span class="card-expand-row-icon">&#8964;</span>
+      </button>
+      <div class="card-detail" id="ld-floor-detail">
+        <div class="timer-section">
+          <div class="auto-options">
+            <label class="timer-fan-checkbox">
+              <input type="checkbox" id="ld-floor-auto-warm">
+              <span>Auto warm on weekdays</span>
+            </label>
+            <label class="timer-fan-checkbox">
+              <input type="checkbox" id="ld-floor-auto-occupancy">
+              <span>Auto on with occupancy</span>
+            </label>
+          </div>
+          <div class="auto-note" id="ld-floor-auto-note"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Water Feature -->
@@ -273,6 +291,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=25"></script>
+  <script src="/static/app.js?v=28"></script>
 </body>
 </html>

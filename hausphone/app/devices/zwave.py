@@ -26,6 +26,13 @@ import json
 import logging
 import os
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+# push.py owns the persistent data dir (/certs in the container, hausphone/data
+# for dev runs); the LD Floor checkboxes live in the same place rather than in
+# a settings module of their own.
+from app.push import DATA_DIR
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +43,9 @@ BINARY_SWITCH_CC = 37    # 0x25
 BARRIER_CC = 102         # 0x66 — garage door opener
 CENTRAL_SCENE_CC = 91    # 0x5B — remote button presses (WallMote, node 13)
 DOOR_LOCK_CC = 98        # 0x62 — Allegion deadbolts (S0-secured)
+BINARY_SENSOR_CC = 48    # 0x30 — ZW100 fallback motion reading
+MULTILEVEL_SENSOR_CC = 49  # 0x31 — ZW100 air temperature
+NOTIFICATION_CC = 113    # 0x71 — ZW100 Home Security / motion
 
 # key -> device. node_id/endpoint from the zwave-js migration
 # (see zwavejs/MIGRATION_CHECKLIST.md). `kind` defaults to "switch"; "barrier" is
@@ -66,6 +76,30 @@ LOCKS = {
 }
 DOOR_LOCK_SECURED = 255
 DOOR_LOCK_UNSECURED = 0
+
+# ── LD Floor automation (lady-den floor pump) ────────────────────────────────
+# Two house-wide options, both surfaced as checkboxes on the LD Floor card:
+#   warm      — floor on at 04:00, off at 07:00, Mon—Fri
+#   occupancy — floor on when the lady-den ZW100 sees motion, off when it clears
+#
+# Both are EDGE-TRIGGERED: they act on a transition (a window boundary, a motion
+# change, or the checkbox itself being ticked) and never re-assert on a timer, so
+# a manual toggle stands until the next edge. This replaces the old
+# tv/tv_vera_cron.py::lady_den_floor(), which recomputed the same two conditions
+# every minute and so undid anything you did by hand within 60 s.
+#
+# The temperature cap only ever blocks an automatic turn-ON. Turning off, and
+# anything you do from the card, always goes through.
+LD_FLOOR_KEY = "ld_floor"
+LD_SENSOR_NODE = 9            # Lady Den ZW100: motion + temp. Also drives the lady-den TV.
+LD_TEMP_MAX_C = 22.0
+LD_WARM_ON_HOUR = 4
+LD_WARM_OFF_HOUR = 7
+LD_WARM_TICK = 30             # seconds between warm-window edge checks
+# Explicit zone rather than the container's clock: the image runs UTC unless TZ
+# is set, and 04:00 UTC is not the 04:00 anyone means.
+LD_TZ = ZoneInfo(os.environ.get("HAUS_TZ", "America/Denver"))
+LD_AUTO_PATH = DATA_DIR / "ld_floor_auto.json"
 
 
 # ── per-device value-id / on-state helpers ───────────────────────────────────
@@ -121,6 +155,12 @@ _last_refresh: float = 0.0
 _broadcast_cb = None
 _notify_cb = None
 
+# LD Floor automation
+_ld_auto = {"warm": True, "occupancy": True}
+_ld_temp_unit = ""            # "°F"/"°C" — only the hydrate dump carries metadata
+_ld_in_warm_window = None     # last observed window state, for edge detection
+_ld_warm_task = None
+
 # ── raw WS client handles ────────────────────────────────────────────────────
 _session = None             # aiohttp.ClientSession
 _ws = None                  # aiohttp ClientWebSocketResponse
@@ -146,6 +186,12 @@ def register_notify(cb):
 # ── connection lifecycle ─────────────────────────────────────────────────────
 async def connect():
     """Open the WS, hydrate state, subscribe. Call once at startup."""
+    global _ld_warm_task
+    _ld_load()
+    # Started before the socket: the warm window must still fire on a box where
+    # zwave-js is down at boot, since set_power reconnects on its own.
+    if _ld_warm_task is None or _ld_warm_task.done():
+        _ld_warm_task = asyncio.create_task(_ld_warm_runner())
     await _ensure_connected()
 
 
@@ -206,6 +252,7 @@ def _hydrate(state):
         for v in node.get("values", []):
             _values[(nid, v.get("endpoint", 0) or 0, v.get("commandClass"),
                      v.get("property"), v.get("propertyKey"))] = v.get("value")
+    _capture_ld_temp_unit(state)
     _recompute_state()
     _recompute_locks()
     _sync_garage_auto()
@@ -300,6 +347,15 @@ def _handle_event(ev):
     # not device state — hand them to the scene engine and stop.
     if cc == CENTRAL_SCENE_CC and prop == "scene":
         _handle_scene_notification(nid, pk, new)
+        return
+
+    # Lady-den motion → LD Floor occupancy automation. The sensor is not in
+    # DEVICES (it isn't a switch), so it never reaches the _read_index lookup.
+    if nid == LD_SENSOR_NODE and (
+            (cc == NOTIFICATION_CC and prop == "Home Security"
+             and pk == "Motion sensor status")
+            or (cc == BINARY_SENSOR_CC and prop == "Any")):
+        _ld_motion_event(bool(_ld_motion()))
         return
 
     # Door lock state change → update that lock and push to clients.
@@ -715,6 +771,174 @@ async def _attic_off_timer_runner(delay_seconds: float):
         "armed": False, "duration_seconds": 0, "expires_at": None,
     })
     await _broadcast_attic_state()
+
+
+# ── LD Floor automation ──────────────────────────────────────────────────────
+def _ld_load():
+    """Read the saved checkboxes. A missing or unreadable file leaves both on,
+    which is the behaviour the old cron job had."""
+    try:
+        saved = json.loads(LD_AUTO_PATH.read_text())
+    except FileNotFoundError:
+        return
+    except Exception as e:
+        log.warning("Could not read %s: %s", LD_AUTO_PATH, e)
+        return
+    for k in _ld_auto:
+        if k in saved:
+            _ld_auto[k] = bool(saved[k])
+
+
+def _ld_save():
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        LD_AUTO_PATH.write_text(json.dumps(_ld_auto))
+    except Exception as e:
+        log.warning("Could not save %s: %s", LD_AUTO_PATH, e)
+
+
+def _capture_ld_temp_unit(state):
+    """_values holds values only and `value updated` events carry no metadata, so
+    read the temp sensor's unit (this ZW100 reports °F) from the hydrate dump."""
+    global _ld_temp_unit
+    for node in state.get("nodes", []):
+        if node.get("nodeId") != LD_SENSOR_NODE:
+            continue
+        for v in node.get("values", []):
+            if (v.get("commandClass") == MULTILEVEL_SENSOR_CC
+                    and v.get("property") == "Air temperature"):
+                _ld_temp_unit = (v.get("metadata") or {}).get("unit") or ""
+                return
+
+
+def _ld_motion():
+    """True while the lady-den sensor reports motion, None if it hasn't said
+    anything yet. The ZW100 holds the notification for its param-3 timeout
+    (240 s) after the last movement, so that timeout is the occupancy linger."""
+    v = _values.get((LD_SENSOR_NODE, 0, NOTIFICATION_CC,
+                     "Home Security", "Motion sensor status"))
+    if v is None:
+        b = _values.get((LD_SENSOR_NODE, 0, BINARY_SENSOR_CC, "Any", None))
+        return None if b is None else bool(b)
+    return v != 0
+
+
+def _ld_temp_c():
+    v = _values.get((LD_SENSOR_NODE, 0, MULTILEVEL_SENSOR_CC, "Air temperature", None))
+    if v is None:
+        return None
+    v = float(v)
+    return (v - 32) * 5.0 / 9.0 if "F" in _ld_temp_unit else v
+
+
+def _ld_too_warm() -> bool:
+    t = _ld_temp_c()
+    return t is not None and t > LD_TEMP_MAX_C
+
+
+def _ld_in_window(now=None) -> bool:
+    now = now or datetime.now(LD_TZ)
+    return now.weekday() < 5 and LD_WARM_ON_HOUR <= now.hour < LD_WARM_OFF_HOUR
+
+
+async def _broadcast_ld_floor():
+    if _broadcast_cb is None:
+        return
+    try:
+        await _broadcast_cb({"zwave": get_state(),
+                             "ld_floor_auto": get_ld_floor_auto()})
+    except Exception as e:
+        log.warning("LD Floor broadcast error: %s", e)
+
+
+async def _ld_set(on: bool, why: str):
+    """Drive the floor from an automation edge, then push the new state."""
+    if bool(_state.get(LD_FLOOR_KEY)) == on:
+        return
+    if on and _ld_too_warm():
+        log.info("LD Floor %s suppressed: lady den at %.1f°C (cap %.1f°C)",
+                 why, _ld_temp_c(), LD_TEMP_MAX_C)
+        return
+    log.info("LD Floor %s -> %s", why, "on" if on else "off")
+    try:
+        await set_power(LD_FLOOR_KEY, on)
+    except Exception as e:
+        log.warning("LD Floor %s failed: %s", why, e)
+        return
+    await _broadcast_ld_floor()
+
+
+def _ld_motion_event(motion: bool):
+    if not _ld_auto["occupancy"]:
+        return
+    if not motion and _ld_auto["warm"] and _ld_in_window():
+        return          # the warm window owns the floor until LD_WARM_OFF_HOUR
+    asyncio.create_task(_ld_set(motion, "occupancy"))
+
+
+async def _ld_warm_runner():
+    """Poll the clock instead of sleeping to the next boundary: a 30 s tick stays
+    correct across a DST change, a clock step or a long suspend, and costs
+    nothing. Startup is deliberately not an edge — a restart mid-window leaves
+    the floor where it is rather than undoing a manual off."""
+    global _ld_in_warm_window
+    _ld_in_warm_window = _ld_in_window()
+    while True:
+        await asyncio.sleep(LD_WARM_TICK)
+        try:
+            now_in = _ld_in_window()
+            if now_in == _ld_in_warm_window:
+                continue
+            # Tracked even while the option is off, so ticking the box later
+            # doesn't replay a boundary that has already passed.
+            _ld_in_warm_window = now_in
+            if not _ld_auto["warm"]:
+                continue
+            if not now_in and _ld_auto["occupancy"] and _ld_motion():
+                continue    # window over but the room is occupied — leave it on
+            await _ld_set(now_in, "warm window")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.warning("LD Floor warm runner error: %s", e)
+
+
+def get_ld_floor_auto() -> dict:
+    t = _ld_temp_c()
+    return {
+        "warm": _ld_auto["warm"],
+        "occupancy": _ld_auto["occupancy"],
+        "in_warm_window": _ld_in_window(),
+        "warm_on_hour": LD_WARM_ON_HOUR,
+        "warm_off_hour": LD_WARM_OFF_HOUR,
+        "motion": _ld_motion(),
+        "temp_c": None if t is None else round(t, 1),
+        "temp_max_c": LD_TEMP_MAX_C,
+        "too_warm": _ld_too_warm(),
+    }
+
+
+async def set_ld_floor_auto(warm=None, occupancy=None) -> dict:
+    """Tick/untick the card's checkboxes. Ticking one applies it immediately if
+    its condition already holds — otherwise the box would look inert until
+    the next edge. Unticking never moves the floor."""
+    newly_on = []
+    changed = False
+    for name, val in (("warm", warm), ("occupancy", occupancy)):
+        if val is None or bool(val) == _ld_auto[name]:
+            continue
+        _ld_auto[name] = bool(val)
+        changed = True
+        if _ld_auto[name]:
+            newly_on.append(name)
+    if changed:
+        _ld_save()
+
+    if "warm" in newly_on and _ld_in_window():
+        await _ld_set(True, "warm window")
+    elif "occupancy" in newly_on and _ld_motion():
+        await _ld_set(True, "occupancy")
+    return get_ld_floor_auto()
 
 
 # ── scene engine: remote button presses → scenes ─────────────────────────────

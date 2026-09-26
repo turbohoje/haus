@@ -3,7 +3,8 @@
 const SERVER = `${location.protocol}//${location.host}`;
 let ws = null;
 let wsRetryMs = 1000;
-let state = { fan: {}, zwave: {}, wemo: {}, attic_timers: null, locks: {}, garage_auto: null };
+let state = { fan: {}, zwave: {}, wemo: {}, attic_timers: null, locks: {}, garage_auto: null,
+              ld_floor_auto: null };
 let timerInterval = null;
 let deferredInstallPrompt = null;
 
@@ -321,6 +322,9 @@ function mergeState(data) {
   if (data.garage_auto) {
     state.garage_auto = data.garage_auto;
   }
+  if (data.ld_floor_auto) {
+    state.ld_floor_auto = data.ld_floor_auto;
+  }
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────
@@ -426,6 +430,46 @@ bindZwave("attic2", "zwave-attic2-toggle");
 bindZwave("ld_floor", "zwave-ld-floor-toggle");
 bindZwave("l_fire", "zwave-l-fire-toggle");
 bindZwave("m_fire", "zwave-m-fire-toggle");
+
+// ── LD Floor automation (auto warm, auto on with occupancy) ─────────
+const ldFloorExpand = document.getElementById('ld-floor-expand');
+const ldFloorDetail = document.getElementById('ld-floor-detail');
+const ldAutoWarm    = document.getElementById('ld-floor-auto-warm');
+const ldAutoOcc     = document.getElementById('ld-floor-auto-occupancy');
+const ldAutoNote    = document.getElementById('ld-floor-auto-note');
+
+ldFloorExpand?.addEventListener('click', () => {
+  ldFloorDetail.classList.toggle('open');
+  ldFloorExpand.classList.toggle('open');
+});
+
+async function postLdFloorAuto(patch) {
+  try {
+    state.ld_floor_auto = await post('/api/ld-floor/auto', patch);
+    renderLdFloorAuto();
+  } catch (e) { console.error(e); }
+}
+
+ldAutoWarm?.addEventListener('change', () => postLdFloorAuto({ warm: ldAutoWarm.checked }));
+ldAutoOcc?.addEventListener('change', () => postLdFloorAuto({ occupancy: ldAutoOcc.checked }));
+
+// One dim line under the checkboxes saying why the floor is (or isn't) running:
+// the temp cap in particular is invisible otherwise, and a held-off auto-on
+// looks like a broken checkbox.
+function renderLdFloorAuto() {
+  const a = state.ld_floor_auto;
+  if (!a) return;
+  if (ldAutoWarm) ldAutoWarm.checked = !!a.warm;
+  if (ldAutoOcc)  ldAutoOcc.checked  = !!a.occupancy;
+  if (!ldAutoNote) return;
+
+  const bits = [];
+  bits.push(a.temp_c == null ? 'temp n/a' : a.temp_c.toFixed(1) + '\u00B0C');
+  bits.push(a.motion == null ? 'motion n/a' : (a.motion ? 'occupied' : 'no motion'));
+  if (a.warm && a.in_warm_window) bits.push('warming until ' + a.warm_off_hour + ':00');
+  if (a.too_warm) bits.push('above ' + a.temp_max_c + '\u00B0C cap \u2014 auto on held');
+  ldAutoNote.textContent = bits.join(' \u00B7 ');
+}
 
 // ── Slide-to-activate control ────────────────────────────────────────────
 // A native range input jumps its value to wherever you tap, so tapping the far
@@ -1019,6 +1063,7 @@ function renderAll() {
   setDot(document.getElementById("wemo-water-dot"), wf?.on);
   updateTimers();
   renderAtticTimers();
+  renderLdFloorAuto();
   renderGarageAuto();
   renderLocks();
 }
