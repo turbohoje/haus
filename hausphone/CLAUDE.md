@@ -195,7 +195,7 @@ expand bar (`# ── LD Floor automation ──` in `zwave.py`):
 
 | Checkbox | Behaviour |
 |----------|-----------|
-| **Auto warm on weekdays** | floor on at **04:00**, off at **07:00**, Mon–Fri |
+| **Auto warm mornings** | floor on at **04:00**, off at **07:00**, every day |
 | **Auto on with occupancy** | floor on when the lady-den ZW100 (**node 9**) sees motion, off when it clears |
 
 - Constants: `LD_SENSOR_NODE` (9), `LD_TEMP_MAX_C` (22.0), `LD_WARM_ON_HOUR` (4),

@@ -218,7 +218,7 @@ async def attic_off_timer(body: dict = Body(...)):
 
 
 # --------------------------------------------------------------------------
-# LD Floor automation (auto warm on weekdays, auto on with occupancy)
+# LD Floor automation (auto warm mornings, auto on with occupancy)
 # --------------------------------------------------------------------------
 @app.post("/api/ld-floor/auto")
 async def ld_floor_auto(body: dict = Body(...)):

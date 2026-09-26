@@ -79,7 +79,7 @@ DOOR_LOCK_UNSECURED = 0
 
 # ── LD Floor automation (lady-den floor pump) ────────────────────────────────
 # Two house-wide options, both surfaced as checkboxes on the LD Floor card:
-#   warm      — floor on at 04:00, off at 07:00, Mon—Fri
+#   warm      — floor on at 04:00, off at 07:00, every day
 #   occupancy — floor on when the lady-den ZW100 sees motion, off when it clears
 #
 # Both are EDGE-TRIGGERED: they act on a transition (a window boundary, a motion
@@ -838,7 +838,7 @@ def _ld_too_warm() -> bool:
 
 def _ld_in_window(now=None) -> bool:
     now = now or datetime.now(LD_TZ)
-    return now.weekday() < 5 and LD_WARM_ON_HOUR <= now.hour < LD_WARM_OFF_HOUR
+    return LD_WARM_ON_HOUR <= now.hour < LD_WARM_OFF_HOUR
 
 
 async def _broadcast_ld_floor():
