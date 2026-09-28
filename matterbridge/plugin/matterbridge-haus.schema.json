@@ -1,0 +1,51 @@
+{
+  "title": "Matterbridge haus plugin",
+  "description": "Bridges the hausphone PWA's Z-Wave switches into Matter for Google Home",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "Plugin name",
+      "type": "string",
+      "readOnly": true
+    },
+    "type": {
+      "description": "Plugin type",
+      "type": "string",
+      "readOnly": true
+    },
+    "hausphoneUrl": {
+      "description": "Base URL of the hausphone app. Loopback works when both containers are on the NUC's host network.",
+      "type": "string",
+      "default": "https://127.0.0.1:3000"
+    },
+    "tlsInsecure": {
+      "description": "Skip TLS verification for hausphone. Its cert is self-signed, so this normally stays on.",
+      "type": "boolean",
+      "default": true
+    },
+    "whiteList": {
+      "description": "Only bridge these device names. Empty bridges everything hausphone exports.",
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "selectFrom": "name"
+    },
+    "blackList": {
+      "description": "Never bridge these device names.",
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "selectFrom": "name"
+    },
+    "debug": {
+      "description": "Verbose plugin logging",
+      "type": "boolean",
+      "default": false
+    },
+    "unregisterOnShutdown": {
+      "description": "Unregister all devices on shutdown (development only)",
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

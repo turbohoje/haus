@@ -147,9 +147,33 @@ Command classes in play:
 | `garage` | 6 | — | Garage | Barrier Operator; slide-to-activate; auto-close watcher |
 
 To add a switch: add an entry to `DEVICES` (`node_id`, optional `endpoint`, `label`, optional
-`auto_off_minutes`). The read/write value-IDs, state cache, event index, and `/api/zwave/{key}/power`
-route all key off `DEVICES` generically. Non-switch devices need a `kind` + matching helpers in
-`_read_vid`/`_write_vid`/`_raw_to_on`/`_on_to_write` (see the barrier case).
+`auto_off_minutes`, optional `matter`). The read/write value-IDs, state cache, event index, and
+`/api/zwave/{key}/power` route all key off `DEVICES` generically. Non-switch devices need a `kind`
++ matching helpers in `_read_vid`/`_write_vid`/`_raw_to_on`/`_on_to_write` (see the barrier case).
+
+#### Matter export (Google Home)
+A `matter` block on a `DEVICES` entry marks it for export to Google Home through the
+`matterbridge/` stack at the repo root:
+
+```python
+"attic1": {"node_id": 16, "endpoint": 1, "label": "Attic1",
+           "matter": {"name": "Attic Fan 1", "type": "outlet"}},
+```
+
+| Field | Meaning |
+|-------|---------|
+| `name` | what Google Home shows on first commissioning (defaults to `label`) |
+| `type` | `"outlet"` (On/Off Plug-in Unit) or `"light"` (On/Off Light) — see `MATTER_TYPES` |
+
+Bridged today: **attic1, attic2, ld_floor, l_fire, m_fire**. `get_matter_devices()` serves them
+via `GET /api/matter/devices`; the bridge reads that once at startup and then rides the existing
+`/ws` state broadcasts, so a switch flipped at the master remote reaches Google Home with no poll.
+
+The bridge drives devices through `POST /api/zwave/{key}/power` like any other client — so a
+fireplace turned on by voice still gets its 90-minute auto-off, and LD Floor keeps its warm-window
+and occupancy behaviour. hausphone stays the only writer. Locks, the garage and the fan are
+deliberately not exported; see `matterbridge/CLAUDE.md` for why, and for the reason a wall switch
+bridges as an *outlet* rather than Matter's (uncontrollable) On/Off Switch type.
 
 #### Scene Engine — master remote → scenes
 The **master remote** (node 13, Aeotec WallMote Quad / ZW130, in Master) reports each of its four
@@ -445,6 +469,7 @@ POST /api/fan/speed                 { "percent": 0-100 }
 POST /api/light/power               { "on": true|false }
 POST /api/light/brightness          { "percent": 0-100 }
 POST /api/zwave/{device_key}/power  { "on": true|false }
+GET  /api/matter/devices            — devices flagged for Matter export (matterbridge)
 POST /api/attic/delay-on            { "armed", "fans": [...], "duration_seconds" }
 POST /api/attic/off-timer           { "armed", "duration_seconds" }
 POST /api/lock/{lock_key}           { "locked": true|false }

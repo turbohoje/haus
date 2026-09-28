@@ -51,18 +51,38 @@ NOTIFICATION_CC = 113    # 0x71 — ZW100 Home Security / motion
 # (see zwavejs/MIGRATION_CHECKLIST.md). `kind` defaults to "switch"; "barrier" is
 # the garage door opener (different command class). Multi-channel ZW140s expose
 # their relays on endpoints 1/2 (the root endpoint 0 has no switch).
+#
+# `matter` marks a device for export to Google Home through the matterbridge/
+# stack at the repo root — see get_matter_devices() below and that directory's
+# CLAUDE.md. Devices without the key are not bridged at all.
 DEVICES = {
     "light_west": {"node_id": 17, "endpoint": 1, "label": "Light West"},
     "light_east": {"node_id": 17, "endpoint": 2, "label": "Light East"},
-    "attic1":     {"node_id": 16, "endpoint": 1, "label": "Attic1"},
-    "attic2":     {"node_id": 16, "endpoint": 2, "label": "Attic2"},
-    "ld_floor":   {"node_id": 24, "label": "LD Floor"},
+    "attic1":     {"node_id": 16, "endpoint": 1, "label": "Attic1",
+                   "matter": {"name": "Attic Fan 1", "type": "outlet"}},
+    "attic2":     {"node_id": 16, "endpoint": 2, "label": "Attic2",
+                   "matter": {"name": "Attic Fan 2", "type": "outlet"}},
+    "ld_floor":   {"node_id": 24, "label": "LD Floor",
+                   "matter": {"name": "Lady Den Floor", "type": "outlet"}},
     "garage":     {"node_id": 6, "kind": "barrier", "label": "Garage"},
-    "l_fire":     {"node_id": 14, "label": "Living Fire", "auto_off_minutes": 90},
+    "l_fire":     {"node_id": 14, "label": "Living Fire", "auto_off_minutes": 90,
+                   "matter": {"name": "Living Room Fireplace", "type": "outlet"}},
     # ZW140 dual-relay fireplace on endpoint 1 (root has no switch). If the fire
     # doesn't respond to a toggle, switch this to endpoint 2.
-    "m_fire":     {"node_id": 10, "endpoint": 1, "label": "Master Fire", "auto_off_minutes": 90},
+    "m_fire":     {"node_id": 10, "endpoint": 1, "label": "Master Fire", "auto_off_minutes": 90,
+                   "matter": {"name": "Master Fireplace", "type": "outlet"}},
 }
+
+# Matter device types the bridge knows how to build. Both are plain on/off
+# endpoints; the only difference is how a controller draws and names them.
+#
+# "outlet" is the default even for things that are morally wall switches. Matter's
+# actual On/Off Switch device type (0x0103) is a *client*: it carries OnOff as a
+# client cluster and binds to other nodes, so Google Home will commission one and
+# then offer no way to turn it on. On/Off Plug-in Unit (0x010A) is the simplest
+# server type Google both renders and controls. Use "light" (On/Off Light, 0x0100)
+# for anything that should answer to "turn off the lights".
+MATTER_TYPES = ("outlet", "light")
 
 # Door locks (Allegion BE469, S0-secured). Kept separate from DEVICES because they
 # aren't on/off switches: read Door Lock CC `currentMode` (255 Secured / 0 Unsecured /
@@ -412,6 +432,39 @@ def _build_state() -> dict:
 
 def get_state() -> dict:
     return _build_state()
+
+
+def get_matter_devices() -> list:
+    """The DEVICES entries flagged for Matter export, with their current state.
+
+    The matterbridge plugin calls this once (via GET /api/matter/devices) to build
+    its bridged endpoints, then stays live off the `zwave` key of the /ws state
+    messages — the same push stream the PWA uses, so a switch flipped from the
+    wall remote reaches Google Home without a poll.
+
+    `on` is coerced to a bool because Matter's OnOff attribute has no "unknown":
+    a device we haven't hydrated yet (_state None) bridges as off until the first
+    value event arrives.
+    """
+    devices = []
+    for key, dev in DEVICES.items():
+        matter = dev.get("matter")
+        if not matter:
+            continue
+        kind = matter.get("type", "outlet")
+        if kind not in MATTER_TYPES:
+            # Caught here rather than in the bridge, so a typo shows up in
+            # hausphone's log instead of as a device silently missing from
+            # Google Home.
+            log.warning("Device %s: unknown matter type %r — exporting as outlet", key, kind)
+            kind = "outlet"
+        devices.append({
+            "key": key,
+            "name": matter.get("name", dev["label"]),
+            "type": kind,
+            "on": bool(_state.get(key)),
+        })
+    return devices
 
 
 async def refresh_state() -> dict:

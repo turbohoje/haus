@@ -1,0 +1,11 @@
+{
+  "name": "matterbridge-haus",
+  "type": "DynamicPlatform",
+  "version": "1.0.0",
+  "hausphoneUrl": "https://127.0.0.1:3000",
+  "tlsInsecure": true,
+  "whiteList": [],
+  "blackList": [],
+  "debug": false,
+  "unregisterOnShutdown": false
+}

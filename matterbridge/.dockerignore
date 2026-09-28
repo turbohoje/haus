@@ -1,0 +1,5 @@
+# A node_modules built on the host would be copied into the image and shadow the
+# install the Dockerfile does, so keep the build context to source only.
+plugin/node_modules
+plugin/package-lock.json
+CLAUDE.md

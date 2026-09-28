@@ -1,0 +1,24 @@
+services:
+  matterbridge:
+    build: .
+    container_name: matterbridge
+    restart: unless-stopped
+    # Matter is mDNS + IPv6 link-local: the commissioner has to see the bridge
+    # advertise on the LAN, which bridge networking does not carry. Same reason
+    # hausphone runs on the host network.
+    network_mode: host
+    # Matterbridge needs time to close its Matter server node cleanly; a hard
+    # kill can leave the commissioning state inconsistent.
+    stop_grace_period: 60s
+    environment:
+      - TZ=America/Denver
+    volumes:
+      # Matter fabric credentials, the device/endpoint-number map and the
+      # plugin config. Losing this means re-commissioning in Google Home and
+      # every device coming back as new, so do not bind-mount it into the repo.
+      - matterbridge-storage:/root/.matterbridge
+      - matterbridge-home:/root/Matterbridge
+
+volumes:
+  matterbridge-storage:
+  matterbridge-home:

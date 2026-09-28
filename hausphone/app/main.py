@@ -183,6 +183,21 @@ async def zwave_power(device_key: str, body: dict = Body(...)):
 
 
 # --------------------------------------------------------------------------
+# Matter export (matterbridge -> Google Home)
+# --------------------------------------------------------------------------
+@app.get("/api/matter/devices")
+async def matter_devices():
+    """Manifest of Z-Wave devices flagged for Matter export.
+
+    Read once at plugin startup by the matterbridge/ stack. State after that
+    rides the existing /ws `state` broadcasts, so this is deliberately not a
+    control surface — the plugin drives devices through /api/zwave/{key}/power
+    like any other client, which keeps the fireplace auto-off timers in play.
+    """
+    return {"devices": zwave.get_matter_devices()}
+
+
+# --------------------------------------------------------------------------
 # Door locks (S0-secured Allegion deadbolts)
 # --------------------------------------------------------------------------
 @app.post("/api/lock/{lock_key}")

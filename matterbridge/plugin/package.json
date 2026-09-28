@@ -1,0 +1,16 @@
+{
+  "name": "matterbridge-haus",
+  "version": "1.0.0",
+  "description": "Haus Z-Wave bridge",
+  "author": "Justin Meyer",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
