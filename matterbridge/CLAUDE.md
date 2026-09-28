@@ -95,6 +95,10 @@ host network.
 4. All five devices appear at once — the bridge itself shows up as an inert "Control Bridge".
    Assign rooms in the Home app.
 
+The Dockerfile's CMD passes `--novirtual`. Without it matterbridge adds its own "Restart
+Matterbridge" / "Update Matterbridge" on/off endpoints to the bridge, and Google Home would list
+them as two more plugs — one voice command away from restarting the bridge.
+
 Commissioning state lives in the `matterbridge-storage` volume. Losing it means re-pairing in
 Google Home and every device coming back as new (rooms and routines lost), which is why it is a
 named volume and not a bind mount into the repo.

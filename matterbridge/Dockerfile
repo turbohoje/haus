@@ -23,4 +23,6 @@ COPY entrypoint.sh /haus-entrypoint.sh
 RUN chmod +x /haus-entrypoint.sh
 
 ENTRYPOINT ["/haus-entrypoint.sh"]
-CMD ["matterbridge", "--docker"]
+# --novirtual: matterbridge otherwise adds its own "Restart/Update Matterbridge"
+# on/off endpoints, which Google Home would show as two extra controllable plugs.
+CMD ["matterbridge", "--docker", "--novirtual"]
