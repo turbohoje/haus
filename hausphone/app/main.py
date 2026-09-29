@@ -133,6 +133,7 @@ def _collect_state() -> dict:
         "locks": zwave.get_locks_state(),
         "wemo": wemo.get_state(),
         "garage_auto": zwave.get_garage_auto(),
+        "tv_auto": dict(_tv_auto),
     }
 
 
@@ -244,6 +245,47 @@ async def ld_floor_auto(body: dict = Body(...)):
 
 
 # --------------------------------------------------------------------------
+# TV auto-on with occupancy -- the switching itself is tv/tv_vera_cron.py on
+# the host; it GETs this before powering a TV on. Keys match tv/tvs_inc.py.
+# --------------------------------------------------------------------------
+TV_AUTO_PATH = push.DATA_DIR / "tv_auto.json"
+_tv_auto = {"office": True, "ladyden": True, "kitchen": True}
+
+
+def _tv_auto_load():
+    """A missing or unreadable file leaves every room on, as cron always was."""
+    try:
+        saved = json.loads(TV_AUTO_PATH.read_text())
+    except FileNotFoundError:
+        return
+    except Exception as e:
+        log.warning("Could not read %s: %s", TV_AUTO_PATH, e)
+        return
+    for k in _tv_auto:
+        if k in saved:
+            _tv_auto[k] = bool(saved[k])
+
+
+@app.get("/api/tv-auto")
+async def get_tv_auto():
+    return _tv_auto
+
+
+@app.post("/api/tv-auto")
+async def set_tv_auto(body: dict = Body(...)):
+    for k in _tv_auto:
+        if k in body:
+            _tv_auto[k] = bool(body[k])
+    try:
+        push.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        TV_AUTO_PATH.write_text(json.dumps(_tv_auto))
+    except Exception as e:
+        log.warning("Could not save %s: %s", TV_AUTO_PATH, e)
+    await broadcast({"type": "state", "data": {"tv_auto": dict(_tv_auto)}})
+    return _tv_auto
+
+
+# --------------------------------------------------------------------------
 # Garage auto-close
 # --------------------------------------------------------------------------
 @app.post("/api/garage/auto-close")
@@ -348,6 +390,7 @@ async def startup():
 
     wemo.load_config()
     push.load()
+    _tv_auto_load()
 
     # Let zwave push state updates when its background timers fire
     zwave.register_broadcast(lambda data: broadcast({"type": "state", "data": data}))

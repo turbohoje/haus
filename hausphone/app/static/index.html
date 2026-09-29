@@ -10,14 +10,14 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>Haus</title>
-  <link rel="stylesheet" href="/static/style.css?v=29">
+  <link rel="stylesheet" href="/static/style.css?v=30">
 </head>
 <body>
 
   <!-- ── Top bar (status-bar safe area + version) ── -->
   <div id="top-bar">
     <button id="settings-gear" aria-label="Settings">&#9881;</button>
-    <span id="app-version">v29</span>
+    <span id="app-version">v30</span>
   </div>
 
   <!-- ── Live camera ── -->
@@ -198,6 +198,32 @@
       </div>
     </div>
 
+    <!-- TV auto-on with occupancy (tv/tv_vera_cron.py checks these) -->
+    <div class="card" data-element="tv_auto">
+      <div class="card-header">
+        <span class="card-label">TV Auto-On</span>
+      </div>
+      <div class="card-detail open">
+        <div class="timer-section">
+          <div class="auto-options">
+            <label class="timer-fan-checkbox">
+              <input type="checkbox" id="tv-auto-office" data-room="office">
+              <span>Basement Office</span>
+            </label>
+            <label class="timer-fan-checkbox">
+              <input type="checkbox" id="tv-auto-ladyden" data-room="ladyden">
+              <span>Lady Den</span>
+            </label>
+            <label class="timer-fan-checkbox">
+              <input type="checkbox" id="tv-auto-kitchen" data-room="kitchen">
+              <span>Living Room</span>
+            </label>
+          </div>
+          <div class="auto-note">Turns the TV on with occupancy</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Water Feature -->
     <div class="card" data-element="water_feature">
       <div class="card-header">
@@ -291,6 +317,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=29"></script>
+  <script src="/static/app.js?v=30"></script>
 </body>
 </html>

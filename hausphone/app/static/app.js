@@ -4,7 +4,7 @@ const SERVER = `${location.protocol}//${location.host}`;
 let ws = null;
 let wsRetryMs = 1000;
 let state = { fan: {}, zwave: {}, wemo: {}, attic_timers: null, locks: {}, garage_auto: null,
-              ld_floor_auto: null };
+              ld_floor_auto: null, tv_auto: null };
 let timerInterval = null;
 let deferredInstallPrompt = null;
 
@@ -21,6 +21,7 @@ const ELEMENTS = [
   { key: "lights_e_w",    label: "Lght E / Lght W" },
   { key: "attics",        label: "Attic1 / Attic2" },
   { key: "ld_floor",      label: "LD Floor" },
+  { key: "tv_auto",       label: "TV Auto-On" },
   { key: "water_feature", label: "Water Feature" },
   { key: "l_fire",        label: "Living Fire" },
   { key: "m_fire",        label: "Master Fire" },
@@ -325,6 +326,9 @@ function mergeState(data) {
   if (data.ld_floor_auto) {
     state.ld_floor_auto = data.ld_floor_auto;
   }
+  if (data.tv_auto) {
+    state.tv_auto = data.tv_auto;
+  }
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────
@@ -469,6 +473,22 @@ function renderLdFloorAuto() {
   if (a.warm && a.in_warm_window) bits.push('warming until ' + a.warm_off_hour + ':00');
   if (a.too_warm) bits.push('above ' + a.temp_max_c + '\u00B0C cap \u2014 auto on held');
   ldAutoNote.textContent = bits.join(' \u00B7 ');
+}
+
+// ── TV auto-on with occupancy (one checkbox per room) ─────────────────────
+const tvAutoBoxes = document.querySelectorAll('[data-element="tv_auto"] input[data-room]');
+
+tvAutoBoxes.forEach(box => box.addEventListener('change', async () => {
+  try {
+    state.tv_auto = await post('/api/tv-auto', { [box.dataset.room]: box.checked });
+    renderTvAuto();
+  } catch (e) { console.error(e); }
+}));
+
+function renderTvAuto() {
+  const a = state.tv_auto;
+  if (!a) return;
+  tvAutoBoxes.forEach(box => { box.checked = !!a[box.dataset.room]; });
 }
 
 // ── Slide-to-activate control ────────────────────────────────────────────
@@ -1064,6 +1084,7 @@ function renderAll() {
   updateTimers();
   renderAtticTimers();
   renderLdFloorAuto();
+  renderTvAuto();
   renderGarageAuto();
   renderLocks();
 }

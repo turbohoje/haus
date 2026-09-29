@@ -13,6 +13,26 @@ from datetime import datetime
 import sys
 sys.path.insert(0, "/home/turbohoje/haus/zwavejs")
 import zwq  # zwave-js value reader (replaces Vera data_request calls)
+import urllib3
+
+# Per-room "auto on with occupancy" checkboxes live in the hausphone PWA.
+HAUSPHONE_TV_AUTO_URL = "https://127.0.0.1:3000/api/tv-auto"
+
+def tv_auto_enabled(room):
+    """Whether hausphone allows occupancy to power this room's TV on.
+
+    Keys match tvs_inc. Only gates turn-on. If hausphone can't be reached,
+    fall back to on so the TVs behave as they did before the checkboxes.
+    """
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    try:
+        # hausphone serves a self-signed cert
+        r = requests.get(HAUSPHONE_TV_AUTO_URL, timeout=5, verify=False)
+        r.raise_for_status()
+        return bool(r.json().get(room, True))
+    except Exception as e:
+        print(f"hausphone tv-auto unavailable ({e}), allowing auto-on")
+        return True
 
 def basement_office():
     print("\nbasement office wega")
@@ -150,7 +170,9 @@ def basement_office():
     print("TV is " + str(state_current))
 
     if state_desired != state_current:        
-        if state_desired: #turn on
+        if state_desired and not tv_auto_enabled('office'):
+            print("auto-on disabled in hausphone, leaving it off")
+        elif state_desired: #turn on
             print("powering on")
             power_on()
             time.sleep(5) 
@@ -183,7 +205,9 @@ def lady_den():
     print("TV is " + str(state_current))
 
     if state_desired != state_current:        
-        if state_desired: #turn on
+        if state_desired and not tv_auto_enabled('ladyden'):
+            print("auto-on disabled in hausphone, leaving it off")
+        elif state_desired: #turn on
             print("powering on")
             a.pow_on()
             time.sleep(5) 
@@ -249,7 +273,9 @@ def living_room():
     print("TV is " + str(state_current))
 
     if state_desired != state_current:
-        if state_desired: #turn on
+        if state_desired and not tv_auto_enabled('kitchen'):
+            print("auto-on disabled in hausphone, leaving it off")
+        elif state_desired: #turn on
             print("powering on")
             a.pow_on()
             time.sleep(5)
