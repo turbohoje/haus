@@ -12,6 +12,13 @@ except ImportError:
 
 current_file_directory = os.path.dirname(os.path.abspath(__file__))
 
+# Per-node temperature calibration lives in zwavejs/zwq.py (°C, added after conversion).
+sys.path.insert(0, os.path.join(current_file_directory, "..", "zwavejs"))
+try:
+    from zwq import TEMP_OFFSET_C
+except ImportError:
+    TEMP_OFFSET_C = {}
+
 # --- zwave-js temperature source (replaces the Vera data_request reads) ---
 # Vera (10.22.14.4) decommissioned 2026-07-26; sensors migrated to zwave-js.
 # Air temperature = Multilevel Sensor CC (49). Node map (old Vera DeviceNum):
@@ -20,14 +27,16 @@ current_file_directory = os.path.dirname(os.path.abspath(__file__))
 #   ladyden     -> Lady Den ZW100 node 9  (was 236)
 #   master      -> Master ZW100   node 12 (was 169)
 #   living      -> Living Room ZW100 node 3 (was 246)
-#   attic       -> Attic Sensor ZSE40 node 15 (reports °F, converted below)
+#   attic       -> Attic Sensor ZSE40 node 15 (reports °F, converted below;
+#                  calibrated via zwq.TEMP_OFFSET_C)
 ZWAVE_WS_URL = "ws://127.0.0.1:3001"
 TEMP_NODES = {"oat": 8, "basement": 21, "ladyden": 9, "master": 12, "living": 3,
               "attic": 15}
 
 def _fetch_zwave_temps_c():
     """Read Air temperature for TEMP_NODES from zwave-js in one WS round-trip.
-    Returns {name: celsius}; °F readings are converted, unreachable nodes omitted."""
+    Returns {name: celsius}; °F readings are converted and TEMP_OFFSET_C applied,
+    unreachable nodes omitted."""
     if aiohttp is None:
         print("aiohttp not available; cannot read zwave-js temps")
         return {}
@@ -64,7 +73,7 @@ def _fetch_zwave_temps_c():
                     unit = (v.get("metadata") or {}).get("unit") or ""
                     if "F" in unit:
                         val = (val - 32) * 5.0 / 9.0
-                    out[name] = val
+                    out[name] = val + TEMP_OFFSET_C.get(nid, 0.0)
                     break
         return out
     try:
@@ -106,7 +115,12 @@ def ctof(c):
     return "{:2.0f}".format((now_c * 9/5) + 32.0)
 
 url = 'https://www.wunderground.com/weather/us/co/denver'  # Replace with your desired URL
-aqi_url = 'https://www.wunderground.com/health/us/co/denver?cm_ven=localwx_modaq'
+# Open-Meteo air quality (free, no key). The weather.com public key we used
+# before started returning 401 "API key is throttled" (2026-10).
+aqi_url = 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=39.742&longitude=-104.986&current=us_aqi'
+# EPA category upper bounds, same labels weather.com returned.
+AQI_CATEGORIES = [(50, 'Good'), (100, 'Moderate'), (150, 'Unhealthy for Sensitive Groups'),
+                  (200, 'Unhealthy'), (300, 'Very Unhealthy')]
 xpath = ''  # Replace with the XPath of the element you want to find
 
 # Temperatures now come from zwave-js (one WS round-trip pulls all five, in °C).
@@ -127,16 +141,35 @@ attic_now_txt    = "{:4.1f}".format(_temps["attic"])    if "attic"    in _temps 
 
 
 content = fetch_html(url)
-aqi_content = fetch_html(aqi_url)
 
-today_txt  = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[1]/div/a/div/div[2]/span[1]')
-today_f    = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[1]/div/a/div/div[2]/span[3]/span/lib-display-unit/span/span[1]')
+def fetch_aqi():
+    try:
+        r = requests.get(aqi_url, timeout=15)
+        r.raise_for_status()
+        v = int(round(r.json()['current']['us_aqi']))
+        label = next((lbl for hi, lbl in AQI_CATEGORIES if v <= hi), 'Hazardous')
+        return str(v), label
+    except (requests.RequestException, ValueError, KeyError, TypeError) as e:
+        print(f"AQI fetch failed: {e}")
+        return None, 'None'
 
-tonight_txt  = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[2]/div/a/div/div[2]/span[1]')
-tonight_f    = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[2]/div/a/div/div[2]/span[3]/span/lib-display-unit/span/span[1]')
+# wunderground redesign (2026-10): three <forecast-box-view> boxes (today/tonight/tomorrow).
+FBOX = '//forecast-box-views/forecast-box-view[{}]'
 
-tomorrow_txt  = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[3]/div/a/div/div[2]/span[1]')
-tomorrow_f    = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[3]/div/a/div/div[2]/span[3]/span[1]/lib-display-unit/span/span[1]')
+def box_temp(n):
+    """'High 66°f' (own text, excluding the .more-temp span) -> '66'."""
+    el = content.xpath(FBOX.format(n) + '//div[@class="temp"]')
+    m = re.search(r'-?\d+', el[0].text or '') if el else None
+    return m.group(0) if m else None
+
+today_txt    = xpath_value(content, FBOX.format(1) + '//div[@class="title"]')
+today_f      = box_temp(1)
+
+tonight_txt  = xpath_value(content, FBOX.format(2) + '//div[@class="title"]')
+tonight_f    = box_temp(2)
+
+tomorrow_txt = xpath_value(content, FBOX.format(3) + '//div[@class="title"]')
+tomorrow_f   = box_temp(3)
 
 
 
@@ -157,9 +190,9 @@ tonight_txt  = "{:<{}}".format(tonight_txt, width)
 tomorrow_txt = "{:<{}}".format(tomorrow_txt, width)
 
 
-today_precip    = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[1]/div/div/div/a[1]')
-tonight_precip  = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[2]/div/div/div/a[1]')
-tomorrow_precip = xpath_value(content, '/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[3]/div/lib-city-today-forecast/div/div[3]/div/div/div/a[1]')
+today_precip    = xpath_value(content, FBOX.format(1) + '/a[@class="precip"]')
+tonight_precip  = xpath_value(content, FBOX.format(2) + '/a[@class="precip"]')
+tomorrow_precip = xpath_value(content, FBOX.format(3) + '/a[@class="precip"]')
 
 if None in (today_f, tonight_f, tomorrow_f, today_precip, tonight_precip, tomorrow_precip):
     print("Failed to scrape values")
@@ -188,8 +221,7 @@ def abbreviate_string(s):
 
 # pollen      = svg_value(content,'/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[4]/div[2]/lib-pollen-tile/a/div[3]')
 # pollen_type = svg_value(content,'/html/body/app-root/app-today/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div/div[4]/div[2]/lib-pollen-tile/a/div[3]/svg/text[1]')
-aqi         = xpath_value(aqi_content,'/html/body/app-root/app-health/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div[1]/div[1]/div/health-air-quality-index/div/div/div[1]/div/div/div/div[2]/div[2]/div[1]/div[2]')
-aqi_label   = str(xpath_value(aqi_content,'/html/body/app-root/app-health/one-column-layout/wu-header/sidenav/mat-sidenav-container/mat-sidenav-content/div[2]/section/div[3]/div[1]/div[1]/div[1]/div/health-air-quality-index/div/div/div[1]/div/div/div/div[1]/div[2]/div[2]'))
+aqi, aqi_label = fetch_aqi()
 aqi_text    = abbreviate_string(aqi_label)
 # print(f"today {today_f} tonight_f {tonight_f} tomorrow {tomorrow_f}")
 # print(f"today preicp {today_precip} tonight_precip {tonight_precip} tomorrow precip {tomorrow_precip}")

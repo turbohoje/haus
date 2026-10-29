@@ -33,6 +33,12 @@ CC_MULTILEVEL_SENSOR = 49  # 0x31
 CC_DOOR_LOCK = 98       # 0x62
 CC_NOTIFICATION = 113   # 0x71
 
+# Per-node temperature calibration, in °C, added after unit conversion.
+# For sensors whose firmware has no offset parameter (e.g. ZSE40 fw 17.9).
+TEMP_OFFSET_C = {
+    15: 2.3,   # Attic ZSE40 — reads 2.3 °C low
+}
+
 
 async def _connect(session):
     ws = await session.ws_connect(URL, heartbeat=20)
@@ -107,15 +113,16 @@ def set_value(node, command_class, property, value, endpoint=0):
 # ---- conveniences --------------------------------------------------------
 
 def temperature_c(node):
-    """Air temperature in Celsius, converting from the device's reported unit."""
+    """Air temperature in Celsius, converting from the device's reported unit
+    and applying any TEMP_OFFSET_C calibration."""
     v = asyncio.run(_get(node, CC_MULTILEVEL_SENSOR, "Air temperature", 0, None))
     if v is None or v.get("value") is None:
         return None
     val = float(v["value"])
     unit = ((v.get("metadata") or {}).get("unit") or "")
     if "F" in unit:            # e.g. "°F"
-        return (val - 32) * 5.0 / 9.0
-    return val
+        val = (val - 32) * 5.0 / 9.0
+    return val + TEMP_OFFSET_C.get(node, 0.0)
 
 
 def humidity(node):

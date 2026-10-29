@@ -45,10 +45,31 @@ just shows the old/blank text — it never blocks the loop.
 ## Weather + indoor temps (`fetch_wx.py` → `center_wx.txt`)
 
 Run from cron every 5 minutes (`*/5 * * * * fetch_wx.py`), **not** from the render
-loop. It scrapes wunderground for the forecast/AQI and reads indoor temperatures
-from **zwave-js** over its WebSocket (`ws://127.0.0.1:3001`), then writes
-`center_wx.txt` (appended to `center.txt` by the loop) and the two
-`wx_forecast_*.txt` files.
+loop. It scrapes wunderground for the today/tonight/tomorrow forecast, gets AQI
+from Open-Meteo, and reads indoor temperatures from **zwave-js** over its
+WebSocket (`ws://127.0.0.1:3001`), then writes `center_wx.txt` (appended to
+`center.txt` by the loop) and the two `wx_forecast_*.txt` files.
+
+### External sources
+
+- **Forecast:** `https://www.wunderground.com/weather/us/co/denver`, plain
+  `requests` + lxml. The three periods are the
+  `//forecast-box-views/forecast-box-view[1..3]` elements (`div.title`,
+  `div.temp`, `a.precip`). These selectors are tied to wunderground's markup —
+  the 2026-10 redesign broke the old `app-root/...` absolute XPaths, and the
+  symptom was the whole overlay freezing (the scrape exits before writing).
+- **AQI:** Open-Meteo air quality API (`current=us_aqi`, no key). The number is
+  mapped to the EPA category names (`AQI_CATEGORIES`). This replaced the
+  weather.com `globalAirQuality` endpoint, whose borrowed public key started
+  returning 401 "API key is throttled" — that showed as `AQ:None/None`. An AQI
+  failure is non-fatal: it renders as `None/None` and the rest still updates.
+- **Week:** `fetch_week.py`, run from cron daily at 04:00, scrapes
+  `https://www.wunderground.com/forecast/us/co/denver` (the
+  `//forecast-grid/forecast-grid-item` elements, now server-rendered, so no
+  playwright) and pickles 7 days of hi/lo into `forecast.pkl`, skipping today
+  and tomorrow since the hourly block covers them. `fetch_wx.py` prints
+  `fetch error` and leaves the week block empty if the pickle is more than a
+  day old.
 
 All temperature nodes are pulled in **one** WS round-trip: connect →
 `set_api_schema` → `start_listening`, then read Air temperature (Multilevel
