@@ -37,6 +37,10 @@ TIMEOUT = 20
 VFR = 'VFR'
 IFR = 'IFR'
 
+# Layers that constitute a ceiling. OVX is how the API reports a vertical
+# visibility (VV002 in the raw METAR), with the VV height as its base.
+CEILING_COVERS = ('BKN', 'OVC', 'OVX')
+
 
 def fetch(stations):
     """Returns the decoded array, or raises.
@@ -82,6 +86,15 @@ def station_row(ob):
     wgst = ob.get('wgst')
     if wgst is not None:
         row['gst'] = wgst
+
+    # Ceiling in feet AGL: the lowest broken, overcast or VV layer. Absent when
+    # there is none, which is common for an IFR station whose category comes
+    # from visibility alone (haze, smoke).
+    bases = [layer['base'] for layer in ob.get('clouds') or []
+             if layer.get('cover') in CEILING_COVERS
+             and layer.get('base') is not None]
+    if bases:
+        row['cig'] = min(bases)
 
     obs = ob.get('obsTime')
     if obs is not None:
