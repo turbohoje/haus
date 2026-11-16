@@ -17,6 +17,7 @@ import datetime
 import json
 import os
 import sys
+import textwrap
 from zoneinfo import ZoneInfo
 
 from googleapiclient.discovery import build
@@ -34,6 +35,13 @@ JUSTIN = 'justin@rocketscience.cc'
 JENNY_FILE = 'cal_jenny.txt'
 JUSTIN_FILE = 'cal_justin.txt'
 BOTH_FILE = 'cal_both.txt'
+
+# Written by fetch_wotd.py as '<YYYY-MM-DD> <word>: <definition>'. Shown at the
+# top of cal_both.txt from 04:00 until 08:00 on the day it was published,
+# wrapped to the panel width and cut off past WOTD_LINES.
+WOTD_FILE = 'wotd.txt'
+WOTD_HOURS = range(4, 8)
+WOTD_LINES = 2
 
 EVENT_COUNT = 4
 LOOKAHEAD_DAYS = 60
@@ -180,6 +188,21 @@ def split_shared(left, right):
             shared)
 
 
+def word_of_the_day(now):
+    """Today's word and definition as cal_both lines during WOTD_HOURS."""
+    if now.hour not in WOTD_HOURS:
+        return []
+    try:
+        with open(os.path.join(WD, WOTD_FILE)) as fh:
+            day, _, text = fh.read().strip().partition(' ')
+    except OSError:
+        return []
+    if day != now.date().isoformat():
+        return []
+    return textwrap.wrap(text, 7 + SHARED_TITLE_WIDTH, max_lines=WOTD_LINES,
+                         placeholder='...')
+
+
 def write_atomic(path, lines):
     """drawtext re-reads the file every frame, so swap it in whole rather than
     letting a frame catch a half-written file."""
@@ -259,9 +282,21 @@ def main():
     jenny_only, justin_only, shared = split_shared(
         entries(upcoming(jenny, now)), entries(upcoming(justin, now)))
 
-    write_atomic(os.path.join(WD, JENNY_FILE), format_rows(jenny_only, SIDE_TITLE_WIDTH))
-    write_atomic(os.path.join(WD, JUSTIN_FILE), format_rows(justin_only, SIDE_TITLE_WIDTH))
-    write_atomic(os.path.join(WD, BOTH_FILE), format_rows(shared, SHARED_TITLE_WIDTH))
+    both_rows = format_rows(shared, SHARED_TITLE_WIDTH)
+    jenny_rows = format_rows(jenny_only, SIDE_TITLE_WIDTH)
+    justin_rows = format_rows(justin_only, SIDE_TITLE_WIDTH)
+    word = word_of_the_day(now)
+    if word:
+        # The word goes first in the middle block, and like a shared row it
+        # costs each side a line: cal_both's y in ffmpeg.sh only clears side
+        # blocks of 3 lines or fewer.
+        both_rows = word + both_rows
+        jenny_rows = jenny_rows[:EVENT_COUNT - 1]
+        justin_rows = justin_rows[:EVENT_COUNT - 1]
+
+    write_atomic(os.path.join(WD, JENNY_FILE), jenny_rows)
+    write_atomic(os.path.join(WD, JUSTIN_FILE), justin_rows)
+    write_atomic(os.path.join(WD, BOTH_FILE), both_rows)
 
     write_snapshot(justin_only, shared)
     return 0

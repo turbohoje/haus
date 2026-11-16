@@ -165,6 +165,21 @@ vertically. All the pixel numbers above are measured, not derived.
 Only the weekday is shown, so an event more than a week out is ambiguous
 (a `T` could be either Tuesday). In practice 4 events rarely reach that far.
 
+### Word of the day
+
+`fetch_wotd.py` (cron, every 10 min 03:00–07:59 on weekdays) saves the NYT
+Learning Network word of the day to `wotd.txt` as
+`<YYYY-MM-DD> <word>: <definition>`. The column page 403s non-browsers, so it
+reads the column's RSS feed, which only carries the word; the definition is
+the first one Wiktionary's REST API gives (the free dictionaryapi.dev was
+missing words like `lackadaisically`). It is published at 10:00 UTC (03:00 MST /
+04:00 MDT) on weekdays only, so the script keeps polling and writes nothing
+until today's word is up.
+
+From 04:00 until 08:00 `fetch_cal.py` puts `<word>: <definition>` at the top
+of `cal_both.txt`, wrapped to 62 chars and cut off with `...` past 2 lines. Like a shared row, it costs each side block a
+line, keeping both sides at 3 lines or fewer so `cal_both` clears them.
+
 ### Which events count
 
 - **`busy (Volta)` shows as `Volta`; other `busy (…)` blocks are skipped.**
