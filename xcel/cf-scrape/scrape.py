@@ -2,7 +2,9 @@
 """
 scrape.py — Pulls xcel_meter_power_watts and xcel_meter_energy_wh from the
 xcel-exporter Prometheus endpoint and POSTs them to the cf-metrics-server Worker
-as power_watts (W) and watt_hours (Wh).
+as power_watts (W) and watt_hours (Wh). Also pulls the gas meter's
+home_metered_consumption{id=GAS_METER_ID} from GAS_METRICS_URL and POSTs it as
+gas_ft3 (ft3), independently of the electric meter's status.
 
 Environment variables (all required unless noted):
   METRICS_URL          URL of the Prometheus endpoint  (default: http://xcel-exporter:9101/metrics)
@@ -10,6 +12,9 @@ Environment variables (all required unless noted):
   API_KEY              X-API-Key value for the Worker
   SENSOR_ID_POWER      sensor_id to use for power demand   (default: power_watts)
   SENSOR_ID_ENERGY     sensor_id to use for energy total   (default: watt_hours)
+  GAS_METRICS_URL      Gas meter Prometheus endpoint (default: http://10.22.14.174:8080/metrics)
+  GAS_METER_ID         id label of the gas meter       (default: 98883030)
+  SENSOR_ID_GAS        sensor_id to use for gas total  (default: gas_ft3)
   LOCATION             location label for readings         (default: denzel)
   SCRAPE_INTERVAL      Seconds between scrapes in loop mode (default: 60)
   RUN_ONCE             Set to "true" to scrape once and exit (default: false)
@@ -32,6 +37,9 @@ WORKER_URL        = os.environ.get("WORKER_URL", "").rstrip("/")
 API_KEY           = os.environ.get("API_KEY", "")
 SENSOR_ID_POWER   = os.environ.get("SENSOR_ID_POWER",  "power_watts")
 SENSOR_ID_ENERGY  = os.environ.get("SENSOR_ID_ENERGY", "watt_hours")
+GAS_METRICS_URL   = os.environ.get("GAS_METRICS_URL", "http://10.22.14.174:8080/metrics")
+GAS_METER_ID      = os.environ.get("GAS_METER_ID", "98883030")
+SENSOR_ID_GAS     = os.environ.get("SENSOR_ID_GAS", "gas_ft3")
 LOCATION          = os.environ.get("LOCATION", "denzel")
 SCRAPE_INTERVAL   = int(os.environ.get("SCRAPE_INTERVAL", "60"))
 RUN_ONCE          = os.environ.get("RUN_ONCE", "false").lower() == "true"
@@ -52,6 +60,12 @@ WANTED = {
     "xcel_meter_power_watts": (SENSOR_ID_POWER,  "W"),
     "xcel_meter_energy_wh":   (SENSOR_ID_ENERGY, "Wh"),
 }
+
+# Gas meter line, e.g.  home_metered_consumption{id="98883030",type="156"} 449511
+GAS_RE = re.compile(
+    r'^home_metered_consumption\{[^}]*\bid="' + re.escape(GAS_METER_ID) + r'"[^}]*\}\s+([\d.eE+\-]+)',
+    re.MULTILINE,
+)
 
 # Only push when the meter is up — avoid storing stale zeros.
 METER_UP_METRIC = "xcel_meter_up"
@@ -130,8 +144,8 @@ def push_reading(sensor_id: str, value: float, unit: str) -> bool:
         return False
 
 
-def scrape_and_push():
-    """One scrape cycle: fetch metrics and push each wanted value."""
+def scrape_electric():
+    """Fetch electric meter metrics and push each wanted value."""
     try:
         metrics = fetch_metrics()
     except requests.RequestException as exc:
@@ -150,6 +164,29 @@ def scrape_and_push():
     for metric_name, (sensor_id, unit) in WANTED.items():
         if metric_name in metrics:
             push_reading(sensor_id, metrics[metric_name], unit)
+
+
+def scrape_gas():
+    """Fetch the gas meter's cumulative consumption and push it."""
+    try:
+        resp = requests.get(GAS_METRICS_URL, timeout=10)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        log.error("Failed to fetch gas metrics from %s: %s", GAS_METRICS_URL, exc)
+        return
+
+    match = GAS_RE.search(resp.text)
+    if not match:
+        log.warning("Gas meter id=%s not found in %s", GAS_METER_ID, GAS_METRICS_URL)
+        return
+
+    push_reading(SENSOR_ID_GAS, float(match.group(1)), "ft3")
+
+
+def scrape_and_push():
+    """One scrape cycle: electric and gas are pushed independently."""
+    scrape_electric()
+    scrape_gas()
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
