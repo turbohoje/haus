@@ -203,6 +203,18 @@ def word_of_the_day(now):
                          placeholder='...')
 
 
+# ffmpeg 4.4's drawtext spaces lines by the tallest-to-lowest glyph in the
+# text, so rows with descenders ("appt") sat further apart than rows without
+# ("Volta"). '$' and 'j' span the full ASCII range of AndaleMono, so a last
+# line of them gives every side block the same pitch; ffmpeg.sh positions the
+# blocks so this line falls just below the frame and is clipped.
+STRUT = '$j'
+
+
+def with_strut(rows):
+    return rows + [STRUT] if rows else rows
+
+
 def write_atomic(path, lines):
     """drawtext re-reads the file every frame, so swap it in whole rather than
     letting a frame catch a half-written file."""
@@ -294,8 +306,8 @@ def main():
         jenny_rows = jenny_rows[:EVENT_COUNT - 1]
         justin_rows = justin_rows[:EVENT_COUNT - 1]
 
-    write_atomic(os.path.join(WD, JENNY_FILE), jenny_rows)
-    write_atomic(os.path.join(WD, JUSTIN_FILE), justin_rows)
+    write_atomic(os.path.join(WD, JENNY_FILE), with_strut(jenny_rows))
+    write_atomic(os.path.join(WD, JUSTIN_FILE), with_strut(justin_rows))
     write_atomic(os.path.join(WD, BOTH_FILE), both_rows)
 
     write_snapshot(justin_only, shared)

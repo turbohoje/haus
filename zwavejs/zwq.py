@@ -36,7 +36,7 @@ CC_NOTIFICATION = 113   # 0x71
 # Per-node temperature calibration, in °C, added after unit conversion.
 # For sensors whose firmware has no offset parameter (e.g. ZSE40 fw 17.9).
 TEMP_OFFSET_C = {
-    15: 2.3,   # Attic ZSE40 — reads 2.3 °C low
+    15: 2.5,   # Attic ZSE40 — reads 2.5 °C low
 }
 
 

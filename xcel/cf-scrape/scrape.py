@@ -4,7 +4,7 @@ scrape.py — Pulls xcel_meter_power_watts and xcel_meter_energy_wh from the
 xcel-exporter Prometheus endpoint and POSTs them to the cf-metrics-server Worker
 as power_watts (W) and watt_hours (Wh). Also pulls the gas meter's
 home_metered_consumption{id=GAS_METER_ID} from GAS_METRICS_URL and POSTs it as
-gas_ft3 (ft3), independently of the electric meter's status.
+gas_cf (cf), independently of the electric meter's status.
 
 Environment variables (all required unless noted):
   METRICS_URL          URL of the Prometheus endpoint  (default: http://xcel-exporter:9101/metrics)
@@ -14,7 +14,7 @@ Environment variables (all required unless noted):
   SENSOR_ID_ENERGY     sensor_id to use for energy total   (default: watt_hours)
   GAS_METRICS_URL      Gas meter Prometheus endpoint (default: http://10.22.14.174:8080/metrics)
   GAS_METER_ID         id label of the gas meter       (default: 98883030)
-  SENSOR_ID_GAS        sensor_id to use for gas total  (default: gas_ft3)
+  SENSOR_ID_GAS        sensor_id to use for gas total  (default: gas_cf)
   LOCATION             location label for readings         (default: denzel)
   SCRAPE_INTERVAL      Seconds between scrapes in loop mode (default: 60)
   RUN_ONCE             Set to "true" to scrape once and exit (default: false)
@@ -39,7 +39,7 @@ SENSOR_ID_POWER   = os.environ.get("SENSOR_ID_POWER",  "power_watts")
 SENSOR_ID_ENERGY  = os.environ.get("SENSOR_ID_ENERGY", "watt_hours")
 GAS_METRICS_URL   = os.environ.get("GAS_METRICS_URL", "http://10.22.14.174:8080/metrics")
 GAS_METER_ID      = os.environ.get("GAS_METER_ID", "98883030")
-SENSOR_ID_GAS     = os.environ.get("SENSOR_ID_GAS", "gas_ft3")
+SENSOR_ID_GAS     = os.environ.get("SENSOR_ID_GAS", "gas_cf")
 LOCATION          = os.environ.get("LOCATION", "denzel")
 SCRAPE_INTERVAL   = int(os.environ.get("SCRAPE_INTERVAL", "60"))
 RUN_ONCE          = os.environ.get("RUN_ONCE", "false").lower() == "true"
@@ -180,7 +180,7 @@ def scrape_gas():
         log.warning("Gas meter id=%s not found in %s", GAS_METER_ID, GAS_METRICS_URL)
         return
 
-    push_reading(SENSOR_ID_GAS, float(match.group(1)), "ft3")
+    push_reading(SENSOR_ID_GAS, float(match.group(1)), "cf")
 
 
 def scrape_and_push():

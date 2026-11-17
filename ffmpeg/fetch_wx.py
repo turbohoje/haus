@@ -234,6 +234,7 @@ wx_week = open(os.path.join(script_dir, 'wx_forecast_week.txt'), 'w')
 
 
 #print(f"{now_txt}:{now_cs}°C {now_f}°F")
+print('$j', file=wx_hour)  # line-pitch strut, clipped above the frame (see ffmpeg.sh)
 print(f"{today_txt}:{tod_c}°C {today_f}°F {tod_p}%", file=wx_hour)
 print(f"{tonight_txt}:{ton_c}°C {tonight_f}°F {ton_p}%", file=wx_hour)
 print(f"{tomorrow_txt}:{tom_c}°C {tomorrow_f}°F {tom_p}%", file=wx_hour)
