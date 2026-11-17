@@ -4,7 +4,7 @@
       "name": "water_feature",
       "label": "Water Feature",
       "ip": "10.22.14.100",
-      "auto_off_minutes": 120
+      "_comment": "winter: pond heater, scheduled by cron. In spring restore \"auto_off_minutes\": 120"
     }
   ]
 }
