@@ -4,7 +4,7 @@ const SERVER = `${location.protocol}//${location.host}`;
 let ws = null;
 let wsRetryMs = 1000;
 let state = { fan: {}, zwave: {}, wemo: {}, attic_timers: null, locks: {}, garage_auto: null,
-              ld_floor_auto: null, tv_auto: null };
+              ld_floor_auto: null, tv_auto: null, ecobee: null };
 let timerInterval = null;
 let deferredInstallPrompt = null;
 
@@ -17,6 +17,7 @@ const PREFS_SCHEMA = 2;
 const ELEMENTS = [
   { key: "camera",        label: "Camera", pinned: true },  // always first; not orderable
   { key: "door_locks",    label: "Door Locks" },
+  { key: "ecobee",        label: "Ecobee" },
   { key: "m_fan_light",   label: "M.Fan / M.Light" },
   { key: "lights_e_w",    label: "Lght E / Lght W" },
   { key: "attics",        label: "Attic1 / Attic2" },
@@ -329,6 +330,9 @@ function mergeState(data) {
   if (data.tv_auto) {
     state.tv_auto = data.tv_auto;
   }
+  if (data.ecobee) {
+    state.ecobee = data.ecobee;
+  }
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────
@@ -473,6 +477,148 @@ function renderLdFloorAuto() {
   if (a.warm && a.in_warm_window) bits.push('warming until ' + a.warm_off_hour + ':00');
   if (a.too_warm) bits.push('above ' + a.temp_max_c + '\u00B0C cap \u2014 auto on held');
   ldAutoNote.textContent = bits.join(' \u00B7 ');
+}
+
+// ── Ecobee thermostat ─────────────────────────────────────────────────────
+const ecoCard     = document.getElementById('eco-card');
+const ecoDot      = document.getElementById('eco-dot');
+const ecoReading  = document.getElementById('eco-reading');
+const ecoMode     = document.getElementById('eco-mode');
+const ecoTarget   = document.getElementById('eco-target');
+const ecoTargetF  = document.getElementById('eco-target-f');
+const ecoHold     = document.getElementById('eco-hold');
+const ecoStatus   = document.getElementById('eco-status');
+const ecoUp       = document.getElementById('eco-up');
+const ecoDown     = document.getElementById('eco-down');
+const ecoExpand   = document.getElementById('eco-expand');
+const ecoDetail   = document.getElementById('eco-detail');
+const ecoStart    = document.getElementById('eco-peak-start');
+const ecoEnd      = document.getElementById('eco-peak-end');
+const ecoSkip     = document.getElementById('eco-skip-today');
+const ecoLinkState = document.getElementById('eco-link-state');
+const ecoLinkBtn  = document.getElementById('eco-link-btn');
+const ecoLinkNote = document.getElementById('eco-link-note');
+let ecoPending = 0;          // °C of taps not yet sent
+let ecoSendTimer = null;
+let ecoSendError = '';
+
+ecoExpand?.addEventListener('click', () => {
+  ecoDetail.classList.toggle('open');
+  ecoExpand.classList.toggle('open');
+});
+
+// Quick taps accumulate and go out as one hold once you stop tapping.
+function ecoStep(d) {
+  ecoPending += d;
+  ecoSendError = '';
+  renderEcobee();
+  clearTimeout(ecoSendTimer);
+  ecoSendTimer = setTimeout(async () => {
+    const delta = ecoPending;
+    if (!delta) return;
+    try { state.ecobee = await post('/api/ecobee/hold', { delta_c: delta }); }
+    catch (e) { ecoSendError = 'Hold failed: ' + e.message; console.error(e); }
+    ecoPending = 0;
+    renderEcobee();
+  }, 1200);
+}
+ecoUp?.addEventListener('click', () => ecoStep(0.5));
+ecoDown?.addEventListener('click', () => ecoStep(-0.5));
+
+async function postEcoAuto(patch) {
+  try { state.ecobee = await post('/api/ecobee/auto', patch); }
+  catch (e) { console.error(e); }
+  renderEcobee();
+}
+ecoStart?.addEventListener('change', () => ecoStart.value && postEcoAuto({ peak_start: ecoStart.value }));
+ecoEnd?.addEventListener('change', () => ecoEnd.value && postEcoAuto({ peak_end: ecoEnd.value }));
+ecoSkip?.addEventListener('change', () => postEcoAuto({ skip_today: ecoSkip.checked }));
+
+ecoLinkBtn?.addEventListener('click', async () => {
+  ecoLinkBtn.disabled = true;
+  delete ecoLinkNote.dataset.err;
+  try { state.ecobee = await post('/api/ecobee/link', {}); }
+  catch (e) { ecoLinkNote.dataset.err = '1'; ecoLinkNote.textContent = 'Could not start linking: ' + e.message; }
+  finally { ecoLinkBtn.disabled = false; }
+  renderEcobee();
+});
+
+// ecobee reports °F; the card leads with °C and shows °F small alongside.
+const fToC = f => (f - 32) * 5 / 9;
+const cToF = c => c * 9 / 5 + 32;
+const roundHalf = c => Math.round(c * 2) / 2;
+function fmtDeg(v, digits = 0) { return v == null || isNaN(v) ? '--' : v.toFixed(digits) + '°'; }
+// Setpoint in °C; pending taps land on the same 0.5 grid the server snaps holds to.
+function spC(f, pendingC) { return f == null ? null : (pendingC ? roundHalf(fToC(f) + pendingC) : fToC(f)); }
+
+function fmtAgo(epoch) {
+  if (!epoch) return 'never';
+  const m = Math.round((Date.now() / 1000 - epoch) / 60);
+  return m < 1 ? 'just now' : m < 60 ? m + 'm ago' : Math.round(m / 60) + 'h ago';
+}
+
+function renderEcobee() {
+  const e = state.ecobee;
+  if (!e || !ecoCard) return;
+  const mode = e.hvac_mode;
+  const running = e.running || {};
+
+  ecoCard.classList.toggle('peak', !!e.in_peak);
+  if (e.temp == null) ecoReading.textContent = '--';
+  else {
+    ecoReading.innerHTML = '<span></span> <span class="eco-reading-f"></span>';
+    ecoReading.firstChild.textContent = fmtDeg(fToC(e.temp), 1) + 'C';
+    ecoReading.lastChild.textContent = fmtDeg(e.temp, 0) + 'F' + (e.humidity != null ? ' · ' + e.humidity + '%' : '');
+  }
+  ecoMode.textContent = mode ? (mode === 'auxHeatOnly' ? 'AUX' : mode.toUpperCase()) : '--';
+  ecoMode.classList.toggle('on', !!mode && mode !== 'off');
+  for (const k of ['fan', 'heat', 'cool', 'humidifier']) {
+    document.getElementById('eco-run-' + k)?.classList.toggle('on', !!running[k]);
+  }
+
+  // Setpoint for the active mode, plus taps that haven't been sent yet.
+  const p = ecoPending;
+  let lo = null, hi = null;          // °C
+  if (mode === 'heat' || mode === 'auxHeatOnly') lo = spC(e.heat_sp, p);
+  else if (mode === 'cool') lo = spC(e.cool_sp, p);
+  else if (mode === 'auto') { lo = spC(e.heat_sp, p); hi = spC(e.cool_sp, p); }
+  const c = v => fmtDeg(v, 1), f = v => fmtDeg(cToF(v), 0);
+  if (mode === 'off') { ecoTarget.textContent = 'Off'; ecoTargetF.textContent = ''; }
+  else if (lo == null) { ecoTarget.textContent = '--'; ecoTargetF.textContent = ''; }
+  else if (hi == null) { ecoTarget.textContent = c(lo) + 'C'; ecoTargetF.textContent = f(lo) + 'F'; }
+  else { ecoTarget.textContent = c(lo) + '–' + c(hi) + 'C'; ecoTargetF.textContent = f(lo) + '–' + f(hi) + 'F'; }
+  ecoTarget.classList.toggle('pending', p !== 0);
+  ecoHold.textContent = p !== 0 ? 'Hold ' + e.hold_hours + 'h on release'
+    : e.hold_until ? 'Hold until ' + e.hold_until : 'Following schedule';
+
+  const canAdjust = e.ok && !e.in_peak && mode && mode !== 'off';
+  ecoUp.disabled = ecoDown.disabled = !canAdjust;
+
+  // Status line: problems first (red), then the peak explanation.
+  const problem = (!e.ok && e.error ? e.error + ' — last update ' + fmtAgo(e.last_update) : '')
+    || (e.ok && e.error) || e.auto_error || ecoSendError;
+  let msg = problem;
+  if (!msg && e.in_peak) msg = 'Peak hours ' + e.peak_start + '–' + e.peak_end + ' — system off';
+  else if (!msg && e.skip_today) msg = 'Peak shutoff skipped today';
+  ecoStatus.textContent = msg || '';
+  ecoStatus.classList.toggle('alert', !!problem);
+
+  ecoDot.classList.toggle('alert', !!problem);
+  ecoDot.classList.toggle('on', !problem && Object.values(running).some(Boolean));
+
+  if (document.activeElement !== ecoStart) ecoStart.value = e.peak_start;
+  if (document.activeElement !== ecoEnd) ecoEnd.value = e.peak_end;
+  ecoSkip.checked = !!e.skip_today;
+
+  // Account linking lives in the Settings overlay, out of the way.
+  ecoLinkState.textContent = e.auth === 'ok' ? 'Linked' : e.auth === 'expired' ? 'Login expired' : 'Not linked';
+  ecoLinkState.classList.toggle('alert', e.auth !== 'ok');
+  if (e.link_pin) {
+    ecoLinkNote.innerHTML = 'Enter PIN <span class="eco-link-pin"></span> at ecobee.com → My Apps → Add Application. This updates once it is accepted.';
+    ecoLinkNote.querySelector('.eco-link-pin').textContent = e.link_pin;
+  } else if (!ecoLinkNote.dataset.err) {
+    ecoLinkNote.textContent = '';
+  }
 }
 
 // ── TV auto-on with occupancy (one checkbox per room) ─────────────────────
@@ -1087,6 +1233,7 @@ function renderAll() {
   renderTvAuto();
   renderGarageAuto();
   renderLocks();
+  renderEcobee();
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────

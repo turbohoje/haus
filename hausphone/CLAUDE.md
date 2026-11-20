@@ -308,10 +308,116 @@ fetch description …` traceback ending in `ConnectTimeoutError` and stalls ~10 
 ```
 The `name` field is used as the API key (e.g. `/api/wemo/water_feature/power`) — use snake_case.
 
+### Ecobee thermostat (`app/devices/ecobee.py`)
+Main Floor thermostat over the ecobee **cloud** API (there is no local API), spoken with plain
+`httpx` — no `pyecobee`. Constants at the top of the module:
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `API_KEY` | `SukJ7W…` | ecobee developer app key (same one the old cron script used) |
+| `THERMOSTAT_ID` | `319279437236` | "Main FLoor" |
+| `POLL_SECONDS` | 180 | status poll — ecobee asks clients not to poll faster than 3 min |
+| `TICK_SECONDS` | 30 | peak-window check |
+| `HOLD_HOURS` | 2 | length of a +/- hold |
+| `PEAK_DAYS` | Mon–Fri | days the peak shutoff applies |
+| `TZ` | `HAUS_TZ` / `America/Denver` | wall clock for the peak window |
+
+#### What it replaced
+The `ecobee/humidifier.py` cron jobs (humidifier `off` 12:30, `manual` 20:21, weekdays). They are
+**commented out** in the crontab (`# moved to hausphone ecobee card: …`), not deleted. They had been
+silently failing since Apr 2026: the script rewrote `ecobee/token.json` on every run and a failed run
+left it **0 bytes**, after which every run exited on the JSON error. Hence the atomic writes below.
+
+#### Card UI (`data-element="ecobee"`, default 2nd, under Locks)
+- **Header:** status dot · "Ecobee" · current temp **°C** (°F + humidity smaller) · mode badge
+  (`HEAT`/`COOL`/`AUTO`/`AUX`/`OFF`).
+- **Equipment chips:** Fan / Heat / Cool / Humid, lit while running (heat amber, cool blue).
+- **Setpoint:** big °C value (range in auto) with °F beneath; − / + buttons; line below says
+  "Hold until HH:MM", "Following schedule", or "Hold 2h on release" while taps are pending.
+- **Status line:** red for problems, else the peak explanation ("Peak hours 17:00–21:00 — system off")
+  or "Peak shutoff skipped today".
+- **Expand bar:** peak start/end `<input type=time>` (15-min steps) and **Skip peak shutoff today**.
+- **Peak:** `#eco-card.peak` grays the header label/reading and the body (chips + setpoint) and the
+  buttons are disabled; the status line and expand area stay usable (so Skip works mid-peak).
+- **Dot:** red on any problem; green when any equipment is running; grey otherwise.
+- **Linking is not on the card** — see Settings → Ecobee account below.
+
+#### Status read
+`GET /1/thermostat` with `includeRuntime/Settings/EquipmentStatus/Events`, parsed by `_parse()`:
+- Temperatures and setpoints are **tenths of °F** (`actualTemperature`, `desiredHeat`, `desiredCool`,
+  `heatCoolMinDelta`); `_f()` converts to °F floats. The server stays in °F; **°C is display-only**
+  in `app.js` (`fToC`/`cToF`), except for hold stepping (below).
+- `equipmentStatus` is a comma list: `heatPump*`/`auxHeat*` → heat, `compCool*` → cool, `fan`,
+  `humidifier`. Empty string = nothing running.
+- Hold end = the running `events[]` entry with `type: "hold"` → `endTime` (thermostat-local HH:MM).
+- `runtime.connected == false` means the thermostat itself is offline from ecobee's cloud — shown
+  as an error even though the API call worked.
+- A re-read is done 3 s after every write (`_settle_and_refresh`) since ecobee lags a little.
+
+#### Temporary hold (+/-)
+- 0.5 °C per tap. Taps accumulate client-side and post **one** `{delta_c}` 1.2 s after the last tap.
+- Server: `_step_c()` moves the active setpoint by `delta_c` and **snaps to the nearest 0.5 °C**, so
+  the °C display moves in clean steps; it's then sent as °F tenths (the wall unit may show e.g. 69.8°F).
+- `setHold` with `holdType: "holdHours"`, `holdHours: 2`. ecobee requires **both** heat and cool hold
+  temps: in heat mode cool is pushed up to keep `heatCoolMinDelta`, in cool mode heat is pushed down,
+  in auto both shift together.
+- Refused with **409** during peak, when mode is off, or before the first good read.
+
+#### Peak shutoff
+- In the window (weekday, `peak_start` ≤ now < `peak_end`, not skipped): save
+  `{hvacMode, humidifierMode, fanMinOnTime}` to disk **first**, then `resumeProgram` (cancels any
+  hold — a fan-on hold would otherwise keep the fan running), then set all three off. `fanMinOnTime`
+  is zeroed because the fan's minimum on-time can run the fan even with the system off.
+- After the window: write the saved values back, then clear `saved`.
+- **Read-back (`_verify`)** in both directions. ecobee answered `200`/status 0 to a *combined*
+  settings + `resumeProgram` call and still left `hvacMode` on `heat` (humidifier did turn off).
+  So they're **separate calls**, and a write only counts once the re-read matches.
+- **State-based, not edge-based:** `saved` (on disk) marks "we shed and must restore";
+  `_off_applied` (memory) marks "the off command verified this peak". Each 30 s tick reconciles, so any
+  failure is retried and its message shows on the card until it succeeds. `_peak_lock` serialises
+  ticks (the runner and a settings change can fire one concurrently; two sheds would overwrite `saved`
+  with the already-off values).
+- **Restart mid-peak** re-sends the off once (verified). A **restart after peak** with `saved` still on
+  disk restores. A container that was down at 17:00 sheds as soon as it's back.
+- Manual changes at the wall mid-peak are left alone (until a restart re-sends the off).
+- **Skip peak shutoff today** stores today's date in `skip_date` (so it resets itself tomorrow).
+  Ticking it mid-peak makes `in_peak()` false → immediate restore; unticking mid-peak sheds again.
+- Window must not cross midnight (start < end assumed).
+- No push alerts by design — errors are card-only.
+
+#### Auth / linking
+- ecobee PIN flow: `GET /authorize?response_type=ecobeePin&scope=smartWrite` → PIN + code; the user
+  enters the PIN at **ecobee.com → My Apps → Add Application**; `_link_poll()` posts
+  `grant_type=ecobeePin` to `/token` every `interval` s (the 401s in the log while waiting are normal)
+  until it's accepted or the PIN expires (~15 min).
+- Token: `/certs/ecobee_token.json` (`{access_token, refresh_token}`). The **refresh token rotates**
+  on every refresh, so it's re-saved each time, via tmp file + rename (never truncated in place).
+- API status codes: **14** = access token expired → refresh once and retry; **16** = app deauthorized
+  → `auth: "expired"`. A rejected refresh also → `expired`. No token file → `auth: "unlinked"`.
+- UI: **Settings → Ecobee account** shows Linked / Login expired / Not linked and a
+  **Re-link ecobee** button; the PIN appears there. The card's red status line just says
+  "… — re-link in Settings". (It was on the card at first; moved out to keep the card clean.)
+
+#### Persistence & state
+- `/certs/ecobee_auto.json`: `{peak_start, peak_end, skip_date, saved}`. Dev runs use
+  `HAUSPHONE_DATA_DIR` like the push keys — point it somewhere disposable so a dev run doesn't
+  share (or rotate!) the production token.
+- Snapshot key `ecobee`: `{ok, auth, error, last_update, connected, temp, humidity, heat_sp, cool_sp,
+  hvac_mode, humidifier_mode, fan_min_on_time, min_delta, running{fan,heat,cool,humidifier},
+  hold_until, in_peak, peak_start, peak_end, skip_today, shed, auto_error, link_pin, hold_hours}`.
+- Wiring mirrors zwave: `main.py` calls `ecobee.register_broadcast(...)` then `ecobee.connect()`
+  (non-fatal), which starts `_runner()` (peak tick every 30 s + poll every 180 s).
+
+#### Checking it from the NUC
+```bash
+curl -sk https://127.0.0.1:3000/api/state | python3 -c "import json,sys;print(json.load(sys.stdin)['ecobee'])"
+docker logs hausphone 2>&1 | grep app.devices.ecobee | tail     # shed/restore/verify lines
+```
+
 ---
 
 ## Push Notifications (`app/push.py`)
-Web Push over VAPID (`pywebpush`), used only for the garage auto-close giving up.
+Web Push over VAPID (`pywebpush`), used only for the garage auto-close giving up (the ecobee card deliberately does not push).
 
 - VAPID keypair + subscriptions live in the **certs volume** (`/certs/vapid_private.pem`,
   `/certs/push_subscriptions.json`) so they survive a rebuild. Dev runs fall back to
@@ -396,14 +502,16 @@ The camera is pinned above `#controls` and is never reordered. Everything below 
 resulting order is stored per device in `localStorage`.
 
 1. **Locks** — door-lock inventory; all four states shown, expand for picker + slide-to-toggle
-2. **M.Fan / M.Light** — paired card, fan speed + brightness sliders
-3. **Lght E / Lght W** — paired card, no sliders (E on left, W on right)
-4. **Attic1 / Attic2** — paired card; expand-down timers (delay-on, off-timer)
-5. **LD Floor** — single card; expand-down automation checkboxes (auto warm, occupancy)
-6. **Water Feature** — single card, auto-off countdown timer (WeMo)
-7. **Living Fire** — single card, 90-min auto-off countdown
-8. **Master Fire** — single card, 90-min auto-off countdown
-9. **Garage** — single card, slide-to-activate (drag-only; prevents pocket-dial); auto-close countdown
+2. **Ecobee** — temp °C/°F, running-equipment chips, ± 2 h hold, grays out in peak; expand for peak window + skip today
+3. **M.Fan / M.Light** — paired card, fan speed + brightness sliders
+4. **Lght E / Lght W** — paired card, no sliders (E on left, W on right)
+5. **Attic1 / Attic2** — paired card; expand-down timers (delay-on, off-timer)
+6. **LD Floor** — single card; expand-down automation checkboxes (auto warm, occupancy)
+7. **TV Auto-On** — per-room checkboxes read by `tv/tv_vera_cron.py` (`/api/tv-auto`)
+8. **Water Feature** — single card, auto-off countdown timer (WeMo)
+9. **Living Fire** — single card, 90-min auto-off countdown
+10. **Master Fire** — single card, 90-min auto-off countdown
+11. **Garage** — single card, slide-to-activate (drag-only; prevents pocket-dial); auto-close countdown
    badge + status line ("Closing automatically in 14m 32s" / "Close attempt 1 of 2" /
    "Gave up after 2 attempts") and a **Disable** checkbox that resets when the door closes
 
@@ -427,12 +535,14 @@ Per-device prefs in `localStorage` under `haus-prefs`, driven by the `ELEMENTS` 
   enabled at the bottom of existing saved orders.
 - **Garage alerts** (`#settings-push`) sits below the orderable list and is hidden in reorder
   mode. It is not a card pref — it toggles this phone's Web Push subscription (see above).
+- **Ecobee account** (`#settings-ecobee`) sits below that, also hidden in reorder mode: link state
+  plus **Re-link ecobee** (PIN flow — see Ecobee above). House-wide, not a per-phone pref.
 
 ---
 
 ## PWA / Service Worker
 - Cache key is `"haus-vN"` in `sw.js` — **bump N whenever any static file changes** so phones receive the updated files
-- Current version: `haus-v28`
+- Current version: `haus-v33`
 - Keep the version label in `index.html` (`#app-version`) in sync with the cache key — it's shown in the top bar so you can verify which build a phone is running.
 - Network-first strategy for app shell (always fetches from server when online, falls back to cache)
 - Never caches `/image`, `/api/*`, or `/ws`
@@ -476,13 +586,16 @@ POST /api/lock/{lock_key}           { "locked": true|false }
 POST /api/wemo/{device_name}/power  { "on": true|false }
 POST /api/garage/auto-close         { "enabled": true|false }
 POST /api/ld-floor/auto             { "warm": bool, "occupancy": bool }   — either key optional
+POST /api/ecobee/hold               { "delta_c": ±0.5n }  — 2 h hold; 409 during peak/off
+POST /api/ecobee/auto               { "peak_start": "HH:MM", "peak_end": "HH:MM", "skip_today": bool } — any key optional
+POST /api/ecobee/link               — start PIN linking; PIN appears as ecobee.link_pin
 GET  /api/push/key                  — { available, key }  (VAPID public key)
 POST /api/push/subscribe            — body is the raw PushSubscription JSON
 POST /api/push/unsubscribe          { "endpoint": "..." }
 POST /api/push/test                 — fan out a test notification; { "sent": n }
 ```
 
-State snapshot keys: `fan`, `zwave`, `attic_timers`, `ld_floor_auto`, `locks`, `wemo`, `garage_auto`.
+State snapshot keys: `fan`, `zwave`, `attic_timers`, `ld_floor_auto`, `locks`, `wemo`, `garage_auto`, `tv_auto`, `ecobee`.
 
 Z-Wave state is push-based (kept live by driver events). Other device types are cached in-memory and re-polled from hardware every 60 seconds. On WebSocket connect (i.e. app load) Z-Wave state is refreshed if the cache is older than 3 seconds — this catches switches flipped externally (physical remote, etc.). Other device types serve cached state on connect.
 
@@ -502,7 +615,8 @@ hausphone/
 │   ├── devices/
 │   │   ├── fan.py          ← aiobafi6 wrapper
 │   │   ├── zwave.py        ← zwave-js WebSocket client + scene engine + garage auto-close + LD Floor automation
-│   │   └── wemo.py         ← pywemo wrapper + auto-off timer
+│   │   ├── wemo.py         ← pywemo wrapper + auto-off timer
+│   │   └── ecobee.py       ← ecobee cloud API: status, 2 h hold, peak shutoff
 │   └── static/
 │       ├── index.html      ← PWA shell
 │       ├── manifest.json
@@ -517,7 +631,7 @@ hausphone/
 - Tailscale hostname/IP for the NUC — add to offline banner when known
 - Security camera analysis (push plumbing already exists — see `app/push.py`)
 - Desktop dashboard verbose layout
-- Additional Z-Wave devices, TVs, thermostats
+- Additional Z-Wave devices, TVs
 - Auto/whoosh fan modes
 - Per-action scene timers (e.g. button turns on a fan, auto-off after N hours) — action schema is already timer-ready
 - Re-poll wemo on WebSocket connect (Z-Wave is already re-polled; fan auto-reconnects on poll via `_ensure_connected()`, wemo less critical)

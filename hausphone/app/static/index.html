@@ -10,14 +10,14 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>Haus</title>
-  <link rel="stylesheet" href="/static/style.css?v=30">
+  <link rel="stylesheet" href="/static/style.css?v=33">
 </head>
 <body>
 
   <!-- ── Top bar (status-bar safe area + version) ── -->
   <div id="top-bar">
     <button id="settings-gear" aria-label="Settings">&#9881;</button>
-    <span id="app-version">v30</span>
+    <span id="app-version">v33</span>
   </div>
 
   <!-- ── Live camera ── -->
@@ -49,6 +49,54 @@
             <span class="slide-hint">Slide</span>
             <div class="slide-thumb">&rsaquo;&rsaquo;</div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ecobee thermostat (grays out during peak, when the system is shut off) -->
+    <div class="card" data-element="ecobee" id="eco-card">
+      <div class="card-header">
+        <span class="status-dot" id="eco-dot"></span>
+        <span class="card-label">Ecobee</span>
+        <span class="eco-reading" id="eco-reading">--</span>
+        <span class="state-badge" id="eco-mode">--</span>
+      </div>
+      <div class="eco-body">
+        <div class="eco-equip">
+          <span class="eco-chip" id="eco-run-fan">Fan</span>
+          <span class="eco-chip" id="eco-run-heat">Heat</span>
+          <span class="eco-chip" id="eco-run-cool">Cool</span>
+          <span class="eco-chip" id="eco-run-humidifier">Humid</span>
+        </div>
+        <div class="eco-setpoint">
+          <button class="eco-step" id="eco-down" aria-label="Lower temperature">&minus;</button>
+          <div class="eco-target">
+            <span class="eco-target-val" id="eco-target">--</span>
+            <span class="eco-target-f" id="eco-target-f"></span>
+            <span class="eco-hold" id="eco-hold"></span>
+          </div>
+          <button class="eco-step" id="eco-up" aria-label="Raise temperature">+</button>
+        </div>
+      </div>
+      <div class="eco-status" id="eco-status"></div>
+      <button class="card-expand-row" id="eco-expand" aria-label="Peak hours">
+        <span class="card-expand-row-icon">&#8964;</span>
+      </button>
+      <div class="card-detail" id="eco-detail">
+        <div class="timer-section">
+          <div class="timer-section-header">
+            <span class="timer-section-title">Peak shutoff (Mon&ndash;Fri)</span>
+          </div>
+          <div class="eco-peak-times">
+            <input type="time" id="eco-peak-start" step="900">
+            <span>to</span>
+            <input type="time" id="eco-peak-end" step="900">
+          </div>
+          <label class="timer-fan-checkbox">
+            <input type="checkbox" id="eco-skip-today">
+            <span>Skip peak shutoff today</span>
+          </label>
+          <div class="auto-note">Turns off heat, cool, fan and humidifier during peak; restores them after.</div>
         </div>
       </div>
     </div>
@@ -313,10 +361,18 @@
         <div id="push-status"></div>
         <button id="push-test">Send test notification</button>
       </div>
+      <div id="settings-ecobee">
+        <div class="settings-row">
+          <span class="settings-label">Ecobee account</span>
+          <span id="eco-link-state"></span>
+        </div>
+        <div id="eco-link-note"></div>
+        <button id="eco-link-btn">Re-link ecobee</button>
+      </div>
       <div id="settings-hint">Drag the handles to set card order.</div>
     </div>
   </div>
 
-  <script src="/static/app.js?v=30"></script>
+  <script src="/static/app.js?v=33"></script>
 </body>
 </html>

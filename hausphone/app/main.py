@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Set
 
-from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
@@ -17,6 +17,7 @@ from watchdog.observers import Observer
 from app import push
 from app.devices import fan, wemo
 from app.devices import zwave
+from app.devices import ecobee
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
 log = logging.getLogger("main")
@@ -134,6 +135,7 @@ def _collect_state() -> dict:
         "wemo": wemo.get_state(),
         "garage_auto": zwave.get_garage_auto(),
         "tv_auto": dict(_tv_auto),
+        "ecobee": ecobee.get_state(),
     }
 
 
@@ -286,6 +288,42 @@ async def set_tv_auto(body: dict = Body(...)):
 
 
 # --------------------------------------------------------------------------
+# Ecobee thermostat (status, 2 h hold, peak shutoff)
+# --------------------------------------------------------------------------
+@app.post("/api/ecobee/hold")
+async def ecobee_hold(body: dict = Body(...)):
+    try:
+        state = await ecobee.adjust_hold(float(body.get("delta_c") or 0))
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    await broadcast({"type": "state", "data": {"ecobee": state}})
+    return state
+
+
+@app.post("/api/ecobee/auto")
+async def ecobee_auto(body: dict = Body(...)):
+    try:
+        state = await ecobee.set_auto(body.get("peak_start"), body.get("peak_end"),
+                                      body.get("skip_today"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await broadcast({"type": "state", "data": {"ecobee": state}})
+    return state
+
+
+@app.post("/api/ecobee/link")
+async def ecobee_link():
+    try:
+        state = await ecobee.start_link()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    await broadcast({"type": "state", "data": {"ecobee": state}})
+    return state
+
+
+# --------------------------------------------------------------------------
 # Garage auto-close
 # --------------------------------------------------------------------------
 @app.post("/api/garage/auto-close")
@@ -408,6 +446,13 @@ async def startup():
         await zwave.connect()
     except Exception as e:
         log.warning("Z-Wave startup error: %s", e)
+
+    # Ecobee: cloud API; polls itself and runs the peak shutoff (non-fatal)
+    ecobee.register_broadcast(lambda data: broadcast({"type": "state", "data": data}))
+    try:
+        await ecobee.connect()
+    except Exception as e:
+        log.warning("Ecobee startup error: %s", e)
 
     # Initial state poll
     try:

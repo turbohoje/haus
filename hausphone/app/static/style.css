@@ -635,13 +635,25 @@ html, body {
   border-top: 1px solid var(--border);
   padding-top: 10px;
 }
-#settings-body.reordering #settings-push { display: none; }
+#settings-body.reordering #settings-push,
+#settings-body.reordering #settings-ecobee { display: none; }
+#settings-ecobee {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+#eco-link-state { font-size: 0.85rem; color: var(--text-dim); }
+#eco-link-state.alert { color: var(--danger); }
+#eco-link-note { color: var(--text-dim); font-size: 0.85rem; padding: 0 4px; }
+#eco-link-note:empty { display: none; }
 #push-status {
   color: var(--text-dim);
   font-size: 0.85rem;
   padding: 0 4px;
 }
-#push-test {
+#push-test, #eco-link-btn {
   align-self: flex-start;
   background: var(--surface2);
   color: var(--text);
@@ -651,7 +663,7 @@ html, body {
   font-size: 0.9rem;
   cursor: pointer;
 }
-#push-test:disabled { opacity: 0.5; }
+#push-test:disabled, #eco-link-btn:disabled { opacity: 0.5; }
 #push-test[hidden] { display: none; }
 
 #settings-hint {
@@ -765,3 +777,60 @@ html, body {
   }
   #camera-wrap img { max-height: 50vh; object-fit: cover; }
 }
+
+/* ── Ecobee ── */
+.eco-reading { font-size: 0.95rem; color: var(--text-dim); white-space: nowrap; }
+.eco-body { padding: 0 16px 12px; display: flex; flex-direction: column; gap: 12px; }
+.eco-equip { display: flex; gap: 8px; }
+.eco-chip {
+  flex: 1;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 6px 0;
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--text-dim);
+}
+.eco-chip.on { background: var(--on); color: #fff; }
+#eco-run-heat.on { background: var(--warn); }
+#eco-run-cool.on { background: var(--accent); }
+.eco-setpoint { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.eco-step {
+  width: 64px;
+  height: 56px;
+  border: none;
+  border-radius: 12px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 1.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.eco-step:active { opacity: 0.7; }
+.eco-step:disabled { opacity: 0.3; cursor: default; }
+.eco-target { display: flex; flex-direction: column; align-items: center; }
+.eco-target-val { font-size: 1.8rem; font-weight: 700; }
+.eco-target-val.pending { color: var(--accent); }
+.eco-target-f { font-size: 0.85rem; color: var(--text-dim); }
+.eco-reading-f { font-size: 0.8em; }
+.eco-hold { font-size: 0.75rem; color: var(--text-dim); min-height: 1em; }
+.eco-status { padding: 0 16px 10px; font-size: 0.8rem; color: var(--text-dim); }
+.eco-status:empty { display: none; }
+.eco-status.alert { color: var(--danger); }
+.eco-peak-times { display: flex; align-items: center; gap: 10px; color: var(--text-dim); }
+.eco-peak-times input {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 1rem;
+  color-scheme: dark;
+}
+.eco-link-pin { font-size: 1.4rem; font-weight: 700; color: var(--text); letter-spacing: 0.08em; }
+/* Peak hours: system is shut off, so the controls gray out (status stays readable) */
+#eco-card.peak .eco-body,
+#eco-card.peak .card-header .card-label,
+#eco-card.peak .eco-reading { opacity: 0.4; filter: grayscale(1); }
